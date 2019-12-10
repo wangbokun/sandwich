@@ -1,2 +1,2 @@
-# littleshadow
-littleshadow is a proxy to fuck the firewall
+# misha
+misha is a proxy faking a mirror website to cross the firewall.
