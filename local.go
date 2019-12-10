@@ -53,25 +53,24 @@ func (l *localProxy) listen() {
 	}
 }
 
-func (l *localProxy) handleConn(clientConn *net.TCPConn) {
-	clientConn.SetLinger(0)
-	defer clientConn.Close()
+func (l *localProxy) handleConn(conn *net.TCPConn) {
+	defer conn.Close()
 
-	if !l.authenticate(clientConn) {
+	if !l.authenticate(conn) {
 		return
 	}
 
-	destAddr, ok := l.handleRequest(clientConn)
+	destAddr, ok := l.handleRequest(conn)
 	if !ok {
 		return
 	}
 
 	reply := []byte{socks5, succeeded, rsv, ipv4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-	if _, err := clientConn.Write(reply); err != nil {
+	if _, err := conn.Write(reply); err != nil {
 		return
 	}
 
-	req, err := http.NewRequest("POST", "https://"+l.serverHost+"/", clientConn)
+	req, err := http.NewRequest("POST", "https://"+l.serverHost+"/", conn)
 	if err != nil {
 		return
 	}
@@ -82,7 +81,7 @@ func (l *localProxy) handleConn(clientConn *net.TCPConn) {
 		return
 	}
 
-	transfer(clientConn, res.Body)
+	transfer(conn, res.Body)
 }
 
 func (l *localProxy) authenticate(client *net.TCPConn) bool {
