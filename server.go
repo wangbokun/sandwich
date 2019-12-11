@@ -3,12 +3,13 @@ package main
 import (
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"time"
 )
 
 const (
-	crossGFWHost = "Cross-GFW-Host"
+	crossFirewallHeader = "Cross-Firewall"
 )
 
 const (
@@ -26,41 +27,35 @@ func newServer(timeout time.Duration) *server {
 }
 
 func (s *server) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if req.Header.Get(crossGFWHost) != "" {
-		s.crossGFW(rw, req)
+	if req.Header.Get(crossFirewallHeader) != "" {
+		s.crossFirewall(rw, req.Header.Get(crossFirewallHeader))
 		return
 	}
+
+	req.Header.Del(crossFirewallHeader)
 	s.reverseProxy(rw, req)
 }
 
-func (s *server) crossGFW(w http.ResponseWriter, req *http.Request) {
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		return
-	}
+func (s *server) crossFirewall(rw http.ResponseWriter, targetHost string) {
+	hijacker, _ := rw.(http.Hijacker)
+	client, _, _ := hijacker.Hijack()
 
-	client, _, err := hijacker.Hijack()
+	target, err := net.DialTimeout("tcp", targetHost, s.timeout)
 	if err != nil {
+		rw.WriteHeader(http.StatusBadGateway)
 		return
 	}
 
-	destAddr := req.Header.Get(crossGFWHost)
+	client.Write([]byte("HTTP/1.0 200 OK\r\n\r\n"))
 
-	destConn, err := net.DialTimeout("tcp", destAddr, s.timeout)
-	if err != nil {
-		return
-	}
-
-	go transfer(client, destConn)
-	transfer(destConn, client)
+	go transfer(client, target)
+	transfer(target, client)
 }
 
 func (s *server) reverseProxy(rw http.ResponseWriter, req *http.Request) {
 	u, _ := url.Parse(reversedWebsite)
-	req.URL = u
-	req.Header.Del(crossGFWHost)
-	req.Host = u.Host
-	http.DefaultClient.Do(req)
-
-	// TODO
+	req.URL.Host = u.Host
+	req.URL.Scheme = u.Scheme
+	req.Host = ""
+	httputil.NewSingleHostReverseProxy(u).ServeHTTP(rw, req)
 }

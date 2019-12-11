@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"crypto/tls"
 	"encoding/binary"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -31,16 +34,16 @@ const (
 )
 
 type localProxy struct {
-	listener   net.Listener
-	timeout    time.Duration
-	serverHost string
+	listener      net.Listener
+	timeout       time.Duration
+	serverWebsite string
 }
 
 func newLocalProxy(listener net.Listener, o options) *localProxy {
 	return &localProxy{
-		listener:   listener,
-		timeout:    o.timeout,
-		serverHost: o.serverHost,
+		listener:      listener,
+		timeout:       o.timeout,
+		serverWebsite: o.serverWebsite,
 	}
 }
 
@@ -53,35 +56,57 @@ func (l *localProxy) listen() {
 	}
 }
 
-func (l *localProxy) handleConn(conn *net.TCPConn) {
-	defer conn.Close()
+func (l *localProxy) handleConn(client *net.TCPConn) {
+	defer client.Close()
 
-	if !l.authenticate(conn) {
+	if !l.authenticate(client) {
 		return
 	}
 
-	destAddr, ok := l.handleRequest(conn)
+	destAddr, ok := l.handleRequest(client)
 	if !ok {
 		return
 	}
 
 	reply := []byte{socks5, succeeded, rsv, ipv4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-	if _, err := conn.Write(reply); err != nil {
+	if _, err := client.Write(reply); err != nil {
 		return
 	}
 
-	req, err := http.NewRequest("POST", "https://"+l.serverHost+"/", conn)
+	u, _ := url.Parse(l.serverWebsite)
+	var server net.Conn
+	var err error
+
+	if u.Scheme == "https" {
+		server, err = tls.Dial("tcp", u.Host, &tls.Config{})
+	} else {
+		server, err = net.DialTimeout("tcp", u.Host, l.timeout)
+	}
 	if err != nil {
 		return
 	}
 
-	req.Header.Set(crossGFWHost, destAddr)
-	res, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequest("POST", l.serverWebsite, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set(crossFirewallHeader, destAddr)
+
+	if err := req.Write(server); err != nil {
+		return
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(server), req)
 	if err != nil {
 		return
 	}
 
-	transfer(conn, res.Body)
+	if resp.StatusCode != 200 {
+		return
+	}
+
+	go transfer(server, client)
+	transfer(client, server)
 }
 
 func (l *localProxy) authenticate(client *net.TCPConn) bool {
