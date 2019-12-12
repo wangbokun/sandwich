@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -28,14 +27,9 @@ func newServer(timeout time.Duration) *server {
 }
 
 func (s *server) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	targetHost := req.Header.Get("Authorization")
+	targetHost := req.Header.Get(crossFirewallHeader)
 	if targetHost != "" {
-		host, err := base64.RawURLEncoding.DecodeString(targetHost)
-		if err != nil {
-			rw.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		s.crossFirewall(rw, string(host))
+		s.crossFirewall(rw, targetHost)
 		return
 	}
 

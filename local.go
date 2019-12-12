@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/binary"
 	"io"
 	"net"
@@ -79,7 +78,7 @@ func (l *localProxy) handleConn(client *net.TCPConn) {
 	var err error
 
 	if u.Scheme == "https" {
-		server, err = tls.Dial("tcp", u.Host, &tls.Config{})
+		server, err = tls.Dial("tcp", u.Host, nil)
 	} else {
 		server, err = net.DialTimeout("tcp", u.Host, l.timeout)
 	}
@@ -87,11 +86,12 @@ func (l *localProxy) handleConn(client *net.TCPConn) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", l.serverWebsite, nil)
+	req, err := http.NewRequest("GET", l.serverWebsite, nil)
 	if err != nil {
 		return
 	}
-	req.Header.Set("Authorization", base64.RawURLEncoding.EncodeToString([]byte(destAddr)))
+
+	req.Header.Set(crossFirewallHeader, destAddr)
 
 	if err := req.Write(server); err != nil {
 		return
