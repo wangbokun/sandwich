@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -22,7 +23,8 @@ type options struct {
 }
 
 func main() {
-	log.SetFlags(log.Lshortfile | log.Ldate)
+	log.SetOutput(ioutil.Discard)
+
 	var o options
 
 	var root *cobra.Command
@@ -30,7 +32,7 @@ func main() {
 
 	root = &cobra.Command{
 		SilenceUsage: true,
-		Use:          "littleshadow",
+		Use:          "misha",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if o.typo == "local" {
 				return startLocalProxy(o)

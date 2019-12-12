@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"io"
 	"net"
@@ -90,7 +91,7 @@ func (l *localProxy) handleConn(client *net.TCPConn) {
 	if err != nil {
 		return
 	}
-	req.Header.Set(crossFirewallHeader, destAddr)
+	req.Header.Set("Authorization", base64.RawURLEncoding.EncodeToString([]byte(destAddr)))
 
 	if err := req.Write(server); err != nil {
 		return
