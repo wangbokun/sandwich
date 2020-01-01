@@ -1,90 +1,63 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
+	"flag"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
-
-	"github.com/spf13/cobra"
-	flag "github.com/spf13/pflag"
 )
 
 type options struct {
-	typo          string
-	timeout       time.Duration
-	serverWebsite string
-	listenAddr    string
-	certFile      string
-	keyFile       string
+	typo               string
+	timeout            time.Duration
+	remoteProxyWebsite string
+	listenAddr         string
+	certFile           string
+	keyFile            string
 }
 
 func main() {
-	log.SetOutput(ioutil.Discard)
-
 	var o options
 
-	var root *cobra.Command
-	var flags *flag.FlagSet
+	flag.StringVar(&o.typo, "typo", "local", "start local proxy or server. [local remote]")
+	flag.DurationVar(&o.timeout, "timeout", 10*time.Second, "timeout for waiting to connect to the server")
+	flag.StringVar(&o.remoteProxyWebsite, "remote-proxy-website", "https://yourdomain.com:443", "the server website to connect to")
+	flag.StringVar(&o.listenAddr, "addr", "127.0.0.1:8080", "local or remote proxy listens on given address")
+	flag.StringVar(&o.certFile, "cert", "", "cert file path")
+	flag.StringVar(&o.keyFile, "key", "", "key file path")
+	flag.Parse()
 
-	root = &cobra.Command{
-		SilenceUsage: true,
-		Use:          "misha",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if o.typo == "local" {
-				return startLocalProxy(o)
-			}
-			return startServer(o)
-		},
-	}
-
-	flags = root.Flags()
-	flags.StringVarP(&o.typo, "type", "y", "local", "start local proxy or server")
-	flags.DurationVarP(&o.timeout, "timeout", "t", 10*time.Second, "timeout for waiting to connect to the server website")
-	flags.StringVarP(&o.serverWebsite, "server-website", "s", "https://server.com:443", "the server website to connect to")
-	flags.StringVarP(&o.listenAddr, "addr", "a", "127.0.0.1:1186", "listen on given address")
-	flags.StringVarP(&o.certFile, "cert", "c", "", "cert file path")
-	flags.StringVarP(&o.keyFile, "key", "k", "", "key file path")
-
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
-}
-
-func startLocalProxy(o options) error {
 	var listener net.Listener
 	var err error
 
 	if listener, err = net.Listen("tcp", o.listenAddr); err != nil {
-		return fmt.Errorf("can't start local proxy: %s", err)
+		log.Panic(err)
 	}
 
-	local := newLocalProxy(listener, o)
-
-	local.listen()
-	return nil
+	if o.typo == "local" {
+		err = startLocalProxy(o, listener)
+	} else {
+		err = startRemoteProxy(o, listener)
+	}
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
-func startServer(o options) error {
-	var listener net.Listener
+func startLocalProxy(o options, listener net.Listener) error {
+	return http.Serve(listener, newLocalProxy(o.timeout, o.remoteProxyWebsite))
+}
+
+func startRemoteProxy(o options, listener net.Listener) error {
 	var err error
-
-	if listener, err = net.Listen("tcp", o.listenAddr); err != nil {
-		return fmt.Errorf("can't start server: %s", err)
-	}
-
-	server := newServer(o.timeout)
+	server := newRemoteProxy(o.timeout)
 
 	if o.certFile != "" && o.keyFile != "" {
 		err = http.ServeTLS(listener, server, o.certFile, o.keyFile)
 	} else {
 		err = http.Serve(listener, server)
 	}
-	if err != nil {
-		return fmt.Errorf("can't start server: %s", err)
-	}
-	return nil
+
+	return err
 }
