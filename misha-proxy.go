@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const crossWall = "4db0f78bd1d9f723a1e8daf97cfb73d5af0777e5"
+const crossWall = "daf07cfb73d0af0777e5"
 const reversedWebsite = "http://mirrors.codec-cluster.org/"
 
 type localProxy struct {
