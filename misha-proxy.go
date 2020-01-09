@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -69,7 +70,7 @@ func (s *remoteProxy) crossWall(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if req.Method == http.MethodConnect {
-		localProxy.Write([]byte("HTTP/1.0 200 OK\r\n\r\n"))
+		localProxy.Write([]byte(fmt.Sprintf("%s 200 OK\r\n\r\n", req.Proto)))
 	} else {
 		req.Write(target)
 	}
