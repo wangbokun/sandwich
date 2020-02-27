@@ -1,9 +1,11 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -17,14 +19,26 @@ const (
 	HeaderSecret   = "Misha-Secret"
 )
 
+type answer struct {
+	Type int    `json:"type"`
+	TTL  int    `json:"TTL"`
+	Data string `json:"data"`
+}
+
+type response struct {
+	Status int      `json:"Status"`
+	Answer []answer `json:"Answer"`
+}
+
 type localProxy struct {
-	*sync.RWMutex
+	sync.RWMutex
 	remoteProxyAddr   string
 	secureMode        bool
 	secretKey         string
 	chinaIP           *chinaIPRangeDB
 	dnsCache          *lru.Cache
 	autoCrossFirewall bool
+	client            *http.Client
 }
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -89,18 +103,12 @@ func (l *localProxy) lookup(host string) net.IP {
 	}
 	l.RUnlock()
 
-	var url string
-	if l.secureMode {
-		url = fmt.Sprintf("https://%s/", l.remoteProxyAddr)
-	} else {
-		url = fmt.Sprintf("http://%s/", l.remoteProxyAddr)
-	}
-
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set(HeaderDNSQuery, host)
+	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", host)
+	req, _ := http.NewRequest(http.MethodGet, provider, nil)
+	req.Header.Set("Accept", "application/dns-json")
 	req.Header.Set(HeaderSecret, l.secretKey)
 
-	res, err := http.DefaultClient.Do(req)
+	res, err := l.client.Do(req)
 	if res != nil {
 		defer res.Body.Close()
 	}
@@ -108,21 +116,32 @@ func (l *localProxy) lookup(host string) net.IP {
 		return nil
 	}
 
-	if res.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	reader := bufio.NewReader(res.Body)
-	line, _, err := reader.ReadLine()
+	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return nil
 	}
 
-	ip := net.ParseIP(string(line))
+	rr := &response{}
+	json.NewDecoder(bytes.NewBuffer(buf)).Decode(rr)
+	if rr.Status != 0 {
+		return nil
+	}
+	if len(rr.Answer) == 0 {
+		return nil
+	}
+
+	var ip net.IP
+	for _, a := range rr.Answer {
+		if a.Type == 1 {
+			ip = net.ParseIP(a.Data)
+			break
+		}
+	}
+
 	if ip != nil {
 		l.Lock()
-		defer l.Unlock()
 		l.dnsCache.Add(host, ip)
+		l.Unlock()
 	}
 
 	return ip

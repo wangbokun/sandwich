@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 
 	"github.com/golang/groupcache/lru"
 )
@@ -53,6 +54,11 @@ func main() {
 }
 
 func startLocalProxy(o options, listener net.Listener) (err error) {
+	var proxy = "https://" + o.remoteProxyAddr
+	if !o.secureMode {
+		proxy = "https://" + o.remoteProxyAddr
+	}
+
 	return http.Serve(listener, &localProxy{
 		remoteProxyAddr:   o.remoteProxyAddr,
 		secureMode:        o.secureMode,
@@ -60,6 +66,13 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 		chinaIP:           newChinaIPRangeDB(),
 		dnsCache:          lru.New(8192),
 		autoCrossFirewall: o.autoCrossFirewall,
+		client: &http.Client{
+			Transport: &http.Transport{
+				Proxy: func(request *http.Request) (i *url.URL, e error) {
+					return url.Parse(proxy)
+				},
+			},
+		},
 	})
 }
 
