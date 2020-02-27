@@ -56,7 +56,7 @@ func main() {
 func startLocalProxy(o options, listener net.Listener) (err error) {
 	var proxy = "https://" + o.remoteProxyAddr
 	if !o.secureMode {
-		proxy = "https://" + o.remoteProxyAddr
+		proxy = "http://" + o.remoteProxyAddr
 	}
 
 	return http.Serve(listener, &localProxy{

@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	HeaderDNSQuery = "Misha-DNS"
-	HeaderSecret   = "Misha-Secret"
+	headerSecret = "Misha-Secret"
 )
 
 type answer struct {
@@ -84,7 +83,7 @@ func (l *localProxy) remote(client net.Conn, req *http.Request) {
 		return
 	}
 
-	req.Header.Set(HeaderSecret, l.secretKey)
+	req.Header.Set(headerSecret, l.secretKey)
 	req.Write(remoteProxy)
 
 	go transfer(remoteProxy, client)
@@ -106,7 +105,7 @@ func (l *localProxy) lookup(host string) net.IP {
 	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
 	req.Header.Set("Accept", "application/dns-json")
-	req.Header.Set(HeaderSecret, l.secretKey)
+	req.Header.Set(headerSecret, l.secretKey)
 
 	res, err := l.client.Do(req)
 	if res != nil {
