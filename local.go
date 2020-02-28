@@ -18,6 +18,11 @@ const (
 	headerSecret = "Misha-Secret"
 )
 
+const (
+	typeIPv4 = 1
+	typeIPv6 = 28
+)
+
 type answer struct {
 	Type int    `json:"type"`
 	TTL  int    `json:"TTL"`
@@ -102,9 +107,9 @@ func (l *localProxy) lookup(host string) net.IP {
 	}
 	l.RUnlock()
 
-	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", host)
+	provider := fmt.Sprintf("https://dns.quad9.net:5053/dns-query?name=%s", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
-	req.Header.Set("Accept", "application/dns-json")
+	req.Header.Set("Accept", "application/json")
 
 	res, err := l.client.Do(req)
 	if res != nil {
@@ -130,7 +135,7 @@ func (l *localProxy) lookup(host string) net.IP {
 
 	var ip net.IP
 	for _, a := range rr.Answer {
-		if a.Type == 1 {
+		if a.Type == typeIPv4 || a.Type == typeIPv6 {
 			ip = net.ParseIP(a.Data)
 			break
 		}
