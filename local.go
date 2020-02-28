@@ -116,16 +116,16 @@ func (l *localProxy) lookup(host string) net.IP {
 		return net.ParseIP(host)
 	}
 
-	l.RLock()
+	l.Lock()
 	if v, ok := l.dnsCache.Get(host); ok {
 		r := v.(*answerCache)
 		if time.Now().Before(r.expiredAt) {
-			l.RUnlock()
+			l.Unlock()
 			return r.ip
 		}
 		l.dnsCache.Remove(host)
 	}
-	l.RUnlock()
+	l.Unlock()
 
 	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
