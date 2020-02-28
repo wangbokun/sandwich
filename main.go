@@ -13,11 +13,10 @@ import (
 
 type options struct {
 	typo              string
-	remoteProxyAddr   string
+	remoteProxy       string
 	listenAddr        string
 	certFile          string
-	keyFile           string
-	secureMode        bool
+	privateKeyFile    string
 	secretKey         string
 	reversedWebsite   string
 	autoCrossFirewall bool
@@ -28,11 +27,10 @@ func main() {
 	var o options
 
 	flag.StringVar(&o.typo, "typo", "local", "start local or remote proxy. [local, remote]")
-	flag.StringVar(&o.remoteProxyAddr, "remote-proxy-addr", "yourdomain.com:443", "the remote proxy address to connect to")
+	flag.StringVar(&o.remoteProxy, "remote-proxy", "https://yourdomain.com:443", "the remote proxy address to connect to")
 	flag.StringVar(&o.listenAddr, "listen-addr", "127.0.0.1:9876", "listens on given address")
 	flag.StringVar(&o.certFile, "cert-file", "", "cert file path")
-	flag.StringVar(&o.keyFile, "private-key-file", "", "key file path")
-	flag.BoolVar(&o.secureMode, "secure-mode", false, "secure mode")
+	flag.StringVar(&o.privateKeyFile, "private-key-file", "", "private key file path")
 	flag.StringVar(&o.secretKey, "secret-key", "daf07cfb73d0af0777e5", "secrect header key to cross firewall")
 	flag.StringVar(&o.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&o.autoCrossFirewall, "auto-cross-firewall", true, "auto cross firewall")
@@ -56,11 +54,7 @@ func main() {
 }
 
 func startLocalProxy(o options, listener net.Listener) (err error) {
-	var proxy = "https://" + o.remoteProxyAddr
-	if !o.secureMode {
-		proxy = "http://" + o.remoteProxyAddr
-	}
-	u, err := url.Parse(proxy)
+	u, err := url.Parse(o.remoteProxy)
 	if err != nil {
 		return err
 	}
@@ -69,8 +63,7 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 	h.Set(headerSecret, o.secretKey)
 
 	err = http.Serve(listener, &localProxy{
-		remoteProxyAddr:   o.remoteProxyAddr,
-		secureMode:        o.secureMode,
+		remoteProxy:       u,
 		secretKey:         o.secretKey,
 		chinaIP:           newChinaIPRangeDB(),
 		dnsCache:          lru.New(8192),
@@ -95,8 +88,8 @@ func startRemoteProxy(o options, listener net.Listener) error {
 		secretKey:       o.secretKey,
 		reversedWebsite: o.reversedWebsite,
 	}
-	if o.certFile != "" && o.keyFile != "" {
-		err = http.ServeTLS(listener, r, o.certFile, o.keyFile)
+	if o.certFile != "" && o.privateKeyFile != "" {
+		err = http.ServeTLS(listener, r, o.certFile, o.privateKeyFile)
 	} else {
 		err = http.Serve(listener, r)
 	}

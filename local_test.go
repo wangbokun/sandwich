@@ -18,7 +18,12 @@ func TestLookup(t *testing.T) {
 		},
 		dnsCache: lru.New(10),
 	}
-	answer := local.lookup("www.baidu.com")
+	host := "www.baidu.com"
+	answer := local.lookup(host)
 	require.NotNil(t, answer)
 	t.Log(answer.String())
+
+	cache, ok := local.dnsCache.Get(host)
+	require.True(t, ok)
+	require.EqualValues(t, answer, cache.(*answerCache).ip)
 }

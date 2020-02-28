@@ -8,8 +8,10 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/groupcache/lru"
 )
@@ -23,10 +25,16 @@ const (
 	typeIPv6 = 28
 )
 
+type answerCache struct {
+	ip        net.IP
+	expiredAt time.Time
+}
+
 type answer struct {
 	Type int    `json:"type"`
 	TTL  int    `json:"TTL"`
 	Data string `json:"data"`
+	ip   net.IP
 }
 
 type response struct {
@@ -36,8 +44,7 @@ type response struct {
 
 type localProxy struct {
 	sync.RWMutex
-	remoteProxyAddr   string
-	secureMode        bool
+	remoteProxy       *url.URL
 	secretKey         string
 	chinaIP           *chinaIPRangeDB
 	dnsCache          *lru.Cache
@@ -46,7 +53,7 @@ type localProxy struct {
 }
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	appendPort(req)
+	req.Host = appendPort(req.Host)
 
 	client, _, _ := rw.(http.Hijacker).Hijack()
 	host, _, _ := net.SplitHostPort(req.Host)
@@ -79,10 +86,12 @@ func (l *localProxy) remote(client net.Conn, req *http.Request) {
 	var remoteProxy net.Conn
 	var err error
 
-	if l.secureMode {
-		remoteProxy, err = tls.Dial("tcp", l.remoteProxyAddr, nil)
+	l.remoteProxy.Host = appendPort(l.remoteProxy.Host)
+
+	if l.remoteProxy.Scheme == "https" {
+		remoteProxy, err = tls.Dial("tcp", l.remoteProxy.Host, nil)
 	} else {
-		remoteProxy, err = net.Dial("tcp", l.remoteProxyAddr)
+		remoteProxy, err = net.Dial("tcp", l.remoteProxy.Host)
 	}
 	if err != nil {
 		return
@@ -103,13 +112,17 @@ func (l *localProxy) lookup(host string) net.IP {
 	l.RLock()
 	if v, ok := l.dnsCache.Get(host); ok {
 		l.RUnlock()
-		return v.(net.IP)
+		r := v.(*answerCache)
+		if time.Now().Before(r.expiredAt) {
+			return r.ip
+		}
+		l.dnsCache.Remove(host)
 	}
 	l.RUnlock()
 
-	provider := fmt.Sprintf("https://dns.quad9.net:5053/dns-query?name=%s", host)
+	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/dns-json")
 
 	res, err := l.client.Do(req)
 	if res != nil {
@@ -133,25 +146,30 @@ func (l *localProxy) lookup(host string) net.IP {
 		return nil
 	}
 
-	var ip net.IP
+	var answer *answer
 	for _, a := range rr.Answer {
 		if a.Type == typeIPv4 || a.Type == typeIPv6 {
-			ip = net.ParseIP(a.Data)
+			answer = &a
 			break
 		}
 	}
 
-	if ip != nil {
+	var ip net.IP
+	if answer != nil {
+		ip = net.ParseIP(answer.Data)
 		l.Lock()
-		l.dnsCache.Add(host, ip)
+		l.dnsCache.Add(host, &answerCache{
+			ip:        ip,
+			expiredAt: time.Now().Add(time.Duration(answer.TTL) * time.Second),
+		})
 		l.Unlock()
 	}
-
 	return ip
 }
 
-func appendPort(req *http.Request) {
-	if strings.Index(req.Host, ":") < 0 || strings.HasSuffix(req.Host, "]") {
-		req.Host += ":80"
+func appendPort(host string) string {
+	if strings.Index(host, ":") < 0 || strings.HasSuffix(host, "]") {
+		host += ":80"
 	}
+	return host
 }
