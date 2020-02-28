@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 
 	"github.com/golang/groupcache/lru"
+	"github.com/jasonlvhit/gocron"
 )
 
 type options struct {
@@ -62,7 +64,7 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 	h := make(http.Header, 0)
 	h.Set(headerSecret, o.secretKey)
 
-	err = http.Serve(listener, &localProxy{
+	local := &localProxy{
 		remoteProxy:       u,
 		secretKey:         o.secretKey,
 		chinaIP:           newChinaIPRangeDB(),
@@ -71,14 +73,25 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 		client: &http.Client{
 			Transport: &http.Transport{
 				Proxy: func(request *http.Request) (i *url.URL, e error) {
+					request.Header.Set(headerSecret, o.secretKey)
 					return u, nil
 				},
 				TLSClientConfig:    &tls.Config{InsecureSkipVerify: false},
 				ProxyConnectHeader: h,
 			},
 		},
-	})
-	return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go local.pullLatestIPRange(ctx)
+
+	gocron.Every(4).Hours().DoSafely(local.pullLatestIPRange, ctx)
+	gocron.Start()
+
+	defer cancel()
+
+	return http.Serve(listener, local)
 }
 
 func startRemoteProxy(o options, listener net.Listener) error {

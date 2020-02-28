@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -165,6 +172,70 @@ func (l *localProxy) lookup(host string) net.IP {
 		l.Unlock()
 	}
 	return ip
+}
+
+func (l *localProxy) pullLatestIPRange(ctx context.Context) error {
+	addr := "http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, addr, nil)
+	res, err := l.client.Do(req)
+	if res != nil {
+		defer res.Body.Close()
+	}
+	if err != nil {
+		return err
+	}
+
+	reader := bufio.NewReader(res.Body)
+	var line []byte
+	var db []*ipRange
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		if line, _, err = reader.ReadLine(); err != nil && err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
+
+		parts := strings.SplitN(string(line), "|", 6)
+		if len(parts) != 6 {
+			continue
+		}
+
+		cc, typ, start, value := parts[1], parts[2], parts[3], parts[4]
+		if !(cc == "CN" && (typ == "ipv4" || typ == "ipv6")) {
+			continue
+		}
+
+		prefixLength, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		if typ == "ipv4" {
+			prefixLength = 32 - int(math.Log(float64(prefixLength))/math.Log(2))
+		}
+
+		db = append(db, &ipRange{value: fmt.Sprintf("%s/%d", start, prefixLength)})
+	}
+
+	if len(db) == 0 {
+		return errors.New("empty ip range db")
+	}
+
+	l.chinaIP.Lock()
+	defer l.chinaIP.Unlock()
+	l.chinaIP.db = db
+	l.chinaIP.init()
+	sort.Sort(l.chinaIP)
+	return nil
 }
 
 func appendPort(host string) string {

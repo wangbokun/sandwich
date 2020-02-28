@@ -38,6 +38,12 @@ type chinaIPRangeDB struct {
 	db []*ipRange
 }
 
+func (db *chinaIPRangeDB) init() {
+	for i := range db.db {
+		db.db[i].init()
+	}
+}
+
 func (db *chinaIPRangeDB) Len() int {
 	return len(db.db)
 }
@@ -51,6 +57,8 @@ func (db *chinaIPRangeDB) Swap(i, j int) {
 }
 
 func (db *chinaIPRangeDB) contains(target net.IP) bool {
+	db.RLock()
+	defer db.RUnlock()
 	if target == nil {
 		return false
 	}
@@ -74,9 +82,9 @@ func (db *chinaIPRangeDB) contains(target net.IP) bool {
 }
 
 func newChinaIPRangeDB() *chinaIPRangeDB {
-	for i := range db.db {
-		db.db[i].init()
-	}
+	db.Lock()
+	defer db.Unlock()
+	db.init()
 	sort.Sort(db)
 	return db
 }
