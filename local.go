@@ -111,9 +111,9 @@ func (l *localProxy) lookup(host string) net.IP {
 
 	l.RLock()
 	if v, ok := l.dnsCache.Get(host); ok {
-		l.RUnlock()
 		r := v.(*answerCache)
 		if time.Now().Before(r.expiredAt) {
+			l.RUnlock()
 			return r.ip
 		}
 		l.dnsCache.Remove(host)
