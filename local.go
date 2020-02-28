@@ -105,7 +105,6 @@ func (l *localProxy) lookup(host string) net.IP {
 	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=A", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
 	req.Header.Set("Accept", "application/dns-json")
-	req.Header.Set(headerSecret, l.secretKey)
 
 	res, err := l.client.Do(req)
 	if res != nil {

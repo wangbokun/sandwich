@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"log"
 	"net"
@@ -23,6 +24,7 @@ type options struct {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	var o options
 
 	flag.StringVar(&o.typo, "typo", "local", "start local or remote proxy. [local, remote]")
@@ -58,8 +60,15 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 	if !o.secureMode {
 		proxy = "http://" + o.remoteProxyAddr
 	}
+	u, err := url.Parse(proxy)
+	if err != nil {
+		return err
+	}
 
-	return http.Serve(listener, &localProxy{
+	h := make(http.Header, 0)
+	h.Set(headerSecret, o.secretKey)
+
+	err = http.Serve(listener, &localProxy{
 		remoteProxyAddr:   o.remoteProxyAddr,
 		secureMode:        o.secureMode,
 		secretKey:         o.secretKey,
@@ -69,11 +78,14 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 		client: &http.Client{
 			Transport: &http.Transport{
 				Proxy: func(request *http.Request) (i *url.URL, e error) {
-					return url.Parse(proxy)
+					return u, nil
 				},
+				TLSClientConfig:    &tls.Config{InsecureSkipVerify: false},
+				ProxyConnectHeader: h,
 			},
 		},
 	})
+	return err
 }
 
 func startRemoteProxy(o options, listener net.Listener) error {
