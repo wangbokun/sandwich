@@ -48,7 +48,7 @@ type response struct {
 
 type localProxy struct {
 	sync.RWMutex
-	remoteProxy       *url.URL
+	remoteProxyAddr   *url.URL
 	secretKey         string
 	chinaIP           *chinaIPRangeDB
 	dnsCache          *lru.Cache
@@ -103,12 +103,12 @@ func (l *localProxy) remote(client net.Conn, req *http.Request) {
 	var remoteProxy net.Conn
 	var err error
 
-	l.remoteProxy.Host = appendPort(l.remoteProxy.Host)
+	l.remoteProxyAddr.Host = appendPort(l.remoteProxyAddr.Host)
 
-	if l.remoteProxy.Scheme == "https" {
-		remoteProxy, err = tls.Dial("tcp", l.remoteProxy.Host, nil)
+	if l.remoteProxyAddr.Scheme == "https" {
+		remoteProxy, err = tls.Dial("tcp", l.remoteProxyAddr.Host, nil)
 	} else {
-		remoteProxy, err = net.Dial("tcp", l.remoteProxy.Host)
+		remoteProxy, err = net.Dial("tcp", l.remoteProxyAddr.Host)
 	}
 	if err != nil {
 		return
