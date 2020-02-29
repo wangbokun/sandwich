@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultTTL = 300 * time.Second
+	defaultTTL = 4 * time.Hour
 )
 
 type dns interface {
