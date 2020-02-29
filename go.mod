@@ -1,4 +1,4 @@
-module github.com/fanpei91/littleshadow
+module github.com/fanpei91/sandwich
 
 go 1.12
 
