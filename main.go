@@ -14,7 +14,7 @@ import (
 )
 
 type options struct {
-	typo              string
+	remoteMode        bool
 	remoteProxy       string
 	listenAddr        string
 	certFile          string
@@ -22,13 +22,14 @@ type options struct {
 	secretKey         string
 	reversedWebsite   string
 	autoCrossFirewall bool
+	useDoH            bool
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	var o options
 
-	flag.StringVar(&o.typo, "typo", "local", "start local or remote proxy. [local, remote]")
+	flag.BoolVar(&o.remoteMode, "remote-mode", true, "start remote proxy. default: local-mode")
 	flag.StringVar(&o.remoteProxy, "remote-proxy", "https://yourdomain.com:443", "the remote proxy address to connect to")
 	flag.StringVar(&o.listenAddr, "listen-addr", "127.0.0.1:9876", "listens on given address")
 	flag.StringVar(&o.certFile, "cert-file", "", "cert file path")
@@ -36,6 +37,7 @@ func main() {
 	flag.StringVar(&o.secretKey, "secret-key", "daf07cfb73d0af0777e5", "secrect header key to cross firewall")
 	flag.StringVar(&o.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&o.autoCrossFirewall, "auto-cross-firewall", true, "auto cross firewall")
+	flag.BoolVar(&o.useDoH, "use-doh", true, "use DoH method to lookup a domain. default: use traditional lookup method")
 	flag.Parse()
 
 	var listener net.Listener
@@ -45,10 +47,10 @@ func main() {
 		log.Panic(err)
 	}
 
-	if o.typo == "local" {
-		err = startLocalProxy(o, listener)
-	} else {
+	if isFlagPassed("remote-mode") {
 		err = startRemoteProxy(o, listener)
+	} else {
+		err = startLocalProxy(o, listener)
 	}
 	if err != nil {
 		log.Panic(err)
@@ -64,22 +66,32 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 	h := make(http.Header, 0)
 	h.Set(headerSecret, o.secretKey)
 
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: func(request *http.Request) (i *url.URL, e error) {
+				request.Header.Set(headerSecret, o.secretKey)
+				return u, nil
+			},
+			TLSClientConfig:    &tls.Config{InsecureSkipVerify: false},
+			ProxyConnectHeader: h,
+		},
+	}
+
+	var dns dns
+	if isFlagPassed("use-doh") {
+		dns = &dnsOverHTTPS{client: client}
+	} else {
+		dns = &dnsOverUDP{}
+	}
+
 	local := &localProxy{
 		remoteProxy:       u,
 		secretKey:         o.secretKey,
 		chinaIP:           newChinaIPRangeDB(),
 		dnsCache:          lru.New(8192),
-		autoCrossFirewall: o.autoCrossFirewall,
-		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy: func(request *http.Request) (i *url.URL, e error) {
-					request.Header.Set(headerSecret, o.secretKey)
-					return u, nil
-				},
-				TLSClientConfig:    &tls.Config{InsecureSkipVerify: false},
-				ProxyConnectHeader: h,
-			},
-		},
+		autoCrossFirewall: isFlagPassed("auto-cross-firewall"),
+		client:            client,
+		dns:               dns,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,4 +120,14 @@ func startRemoteProxy(o options, listener net.Listener) error {
 	}
 
 	return err
+}
+
+func isFlagPassed(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }

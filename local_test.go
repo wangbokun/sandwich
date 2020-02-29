@@ -11,14 +11,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLookup(t *testing.T) {
-	local := &localProxy{
-		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy: nil,
-			},
+func TestDNSOverHTTPS(t *testing.T) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: nil,
 		},
+	}
+	local := &localProxy{
+		client:   client,
 		dnsCache: lru.New(10),
+		dns:      &dnsOverHTTPS{client: client},
+	}
+	host := "www.baidu.com"
+	answer := local.lookup(host)
+	require.NotNil(t, answer)
+	t.Log(answer.String())
+
+	cache, ok := local.dnsCache.Get(host)
+	require.True(t, ok)
+	require.EqualValues(t, answer, cache.(*answerCache).ip)
+}
+
+func TestDNSOverUDP(t *testing.T) {
+	local := &localProxy{
+		dnsCache: lru.New(10),
+		dns:      &dnsOverUDP{},
 	}
 	host := "www.baidu.com"
 	answer := local.lookup(host)

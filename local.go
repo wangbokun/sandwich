@@ -2,14 +2,11 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -57,6 +54,7 @@ type localProxy struct {
 	dnsCache          *lru.Cache
 	autoCrossFirewall bool
 	client            *http.Client
+	dns               dns
 }
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -65,7 +63,19 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	client, _, _ := rw.(http.Hijacker).Hijack()
 	host, _, _ := net.SplitHostPort(req.Host)
 
-	if l.autoCrossFirewall && (l.chinaIP.contains(net.ParseIP(host)) || l.chinaIP.contains(l.lookup(host))) {
+	if !l.autoCrossFirewall {
+		l.remote(client, req)
+		return
+	}
+
+	targetIP := net.ParseIP(host)
+
+	if targetIP != nil && l.chinaIP.contains(targetIP) {
+		l.direct(client, req)
+		return
+	}
+
+	if targetIP == nil && l.chinaIP.contains(l.lookup(host)) {
 		l.direct(client, req)
 		return
 	}
@@ -112,10 +122,6 @@ func (l *localProxy) remote(client net.Conn, req *http.Request) {
 }
 
 func (l *localProxy) lookup(host string) net.IP {
-	if net.ParseIP(host) != nil {
-		return net.ParseIP(host)
-	}
-
 	l.Lock()
 	if v, ok := l.dnsCache.Get(host); ok {
 		r := v.(*answerCache)
@@ -127,47 +133,12 @@ func (l *localProxy) lookup(host string) net.IP {
 	}
 	l.Unlock()
 
-	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s", host)
-	req, _ := http.NewRequest(http.MethodGet, provider, nil)
-	req.Header.Set("Accept", "application/dns-json")
-
-	res, err := l.client.Do(req)
-	if res != nil {
-		defer res.Body.Close()
-	}
-	if err != nil {
-		return nil
-	}
-
-	buf, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil
-	}
-
-	rr := &response{}
-	json.NewDecoder(bytes.NewBuffer(buf)).Decode(rr)
-	if rr.Status != 0 {
-		return nil
-	}
-	if len(rr.Answer) == 0 {
-		return nil
-	}
-
-	var answer *answer
-	for _, a := range rr.Answer {
-		if a.Type == typeIPv4 || a.Type == typeIPv6 {
-			answer = &a
-			break
-		}
-	}
-
-	var ip net.IP
-	if answer != nil {
-		ip = net.ParseIP(answer.Data)
+	ip, expiredAt := l.dns.lookup(host)
+	if ip != nil {
 		l.Lock()
 		l.dnsCache.Add(host, &answerCache{
 			ip:        ip,
-			expiredAt: time.Now().Add(time.Duration(answer.TTL) * time.Second),
+			expiredAt: expiredAt,
 		})
 		l.Unlock()
 	}
