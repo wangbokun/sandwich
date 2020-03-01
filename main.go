@@ -29,31 +29,33 @@ type options struct {
 	disableAutoCrossFirewall bool
 	useDoH                   bool
 	action                   string
+	networkservice           string
 }
 
 var (
 	quit     = make(chan struct{})
-	done     = make(chan struct{})
 	cronDone chan bool
+	flags    options
 )
 
 func main() {
 	log.SetFlags(0)
-	var o options
 
-	flag.BoolVar(&o.remoteProxyMode, "remote-proxy-mode", false, "remote proxy mode")
-	flag.StringVar(&o.remoteProxyAddr, "remote-proxy-addr", "https://yourdomain.com:443", "the remote proxy address to connect to")
-	flag.StringVar(&o.listenAddr, "listen-addr", "127.0.0.1:9876", "listens on given address")
-	flag.StringVar(&o.certFile, "cert-file", "", "cert file path")
-	flag.StringVar(&o.privateKeyFile, "private-key-file", "", "private key file path")
-	flag.StringVar(&o.secretKey, "secret-key", "daf07cfb73d0af0777e5", "secrect header key to cross firewall")
-	flag.StringVar(&o.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
-	flag.BoolVar(&o.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
-	flag.BoolVar(&o.useDoH, "use-doh", false, "use DNS Over HTTPS method to lookup a domain.")
-	flag.StringVar(&o.action, "action", "", "do actions to the process [actions: quit]")
+	flag.BoolVar(&flags.remoteProxyMode, "remote-proxy-mode", false, "remote proxy mode")
+	flag.StringVar(&flags.remoteProxyAddr, "remote-proxy-addr", "https://yourdomain.com:443", "the remote proxy address to connect to")
+	flag.StringVar(&flags.listenAddr, "listen-addr", "127.0.0.1:2286", "listens on given address")
+	flag.StringVar(&flags.certFile, "cert-file", "", "cert file path")
+	flag.StringVar(&flags.privateKeyFile, "private-key-file", "", "private key file path")
+	flag.StringVar(&flags.secretKey, "secret-key", "daf07cfb73d0af0777e5", "secrect header key to cross firewall")
+	flag.StringVar(&flags.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
+	flag.BoolVar(&flags.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
+	flag.BoolVar(&flags.useDoH, "use-doh", false, "use DNS Over HTTPS method to lookup a domain.")
+	flag.StringVar(&flags.action, "action", "", "do actions to the process [actions: quit]")
+	flag.StringVar(&flags.networkservice, "ns", "Wi-Fi", "the networkservice to auto set proxy")
 	flag.Parse()
 
-	daemon.AddCommand(daemon.StringFlag(&o.action, "quit"), syscall.SIGQUIT, termHandler)
+	daemon.AddCommand(daemon.StringFlag(&flags.action, "quit"), syscall.SIGQUIT, termHandler)
+	daemon.SetSigHandler(termHandler, syscall.SIGQUIT, syscall.SIGTERM)
 
 	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
 	os.MkdirAll(workDir, 0755)
@@ -86,24 +88,32 @@ func main() {
 	defer cntxt.Release()
 
 	var listener net.Listener
-	if listener, err = net.Listen("tcp", o.listenAddr); err != nil {
+	if listener, err = net.Listen("tcp", flags.listenAddr); err != nil {
 		log.Fatalf("error: %s", err.Error())
 	}
 
-	if o.remoteProxyMode {
-		go startRemoteProxy(o, listener)
+	var errCh = make(chan error, 2)
+	if flags.remoteProxyMode {
+		go startRemoteProxy(flags, listener, errCh)
 	} else {
-		go startLocalProxy(o, listener)
+		go startLocalProxy(flags, listener, errCh)
 	}
 
+	select {
+	case err := <-errCh:
+		log.Fatalf("error: %s", err)
+	default:
+	}
 	if err = daemon.ServeSignals(); err != nil {
 		log.Fatalf("error: %s", strings.ToLower(err.Error()))
 	}
 }
 
-func startLocalProxy(o options, listener net.Listener) {
+func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
+	var err error
 	u, err := url.Parse(o.remoteProxyAddr)
 	if err != nil {
+		errChan <- err
 		return
 	}
 
@@ -142,30 +152,20 @@ func startLocalProxy(o options, listener net.Listener) {
 
 	go local.pullLatestIPRange(ctx)
 
+	setSysProxy(o.networkservice, o.listenAddr)
+
 	gocron.Every(4).Hours().DoSafely(local.pullLatestIPRange, ctx)
-	gocron.Every(3).Seconds().DoSafely(sysProxy)
+	gocron.Every(3).Seconds().DoSafely(sysProxy, o.networkservice, o.listenAddr)
 	cronDone = gocron.Start()
 
 	defer cancel()
 
-	if err := http.Serve(listener, local); err != nil {
-		log.Fatalf("error: %s", err.Error())
-	}
+	errChan <- http.Serve(listener, local)
 }
 
-func startRemoteProxy(o options, listener net.Listener) {
-	gocron.Every(1).Seconds().DoSafely(func() {
-		select {
-		case <-quit:
-			close(cronDone)
-			close(done)
-		default:
-		}
-	})
-	cronDone = gocron.Start()
-
+func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
+	cronDone = make(chan bool)
 	var err error
-
 	r := &remoteProxy{
 		secretKey:       o.secretKey,
 		reversedWebsite: o.reversedWebsite,
@@ -175,35 +175,21 @@ func startRemoteProxy(o options, listener net.Listener) {
 	} else {
 		err = http.Serve(listener, r)
 	}
-	if err != nil {
-		log.Fatalf("error: %s", err.Error())
-	}
+	errChan <- err
 }
 
-func termHandler(sig os.Signal) (err error) {
+func termHandler(_ os.Signal) (err error) {
 	close(quit)
-	if sig == syscall.SIGQUIT {
-		<-done
-	}
+	close(cronDone)
+	unsetSysProxy(flags.networkservice)
 	return daemon.ErrStop
 }
 
-func sysProxy() (err error) {
+func sysProxy(networkservice string, listenAddr string) (err error) {
 	select {
 	case <-quit:
-		close(cronDone)
-		err = unsetSysProxy()
-		close(done)
 	default:
-		err = setSysProxy()
+		err = setSysProxy(networkservice, listenAddr)
 	}
 	return err
-}
-
-func setSysProxy() error {
-	return nil
-}
-
-func unsetSysProxy() error {
-	return nil
 }
