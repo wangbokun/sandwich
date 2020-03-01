@@ -8,9 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/golang/groupcache/lru"
 	"github.com/jasonlvhit/gocron"
+	"github.com/sevlyar/go-daemon"
 )
 
 type options struct {
@@ -23,10 +28,17 @@ type options struct {
 	reversedWebsite          string
 	disableAutoCrossFirewall bool
 	useDoH                   bool
+	action                   string
 }
 
+var (
+	quit     = make(chan struct{})
+	done     = make(chan struct{})
+	cronDone chan bool
+)
+
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetFlags(0)
 	var o options
 
 	flag.BoolVar(&o.remoteProxyMode, "remote-proxy-mode", false, "remote proxy mode")
@@ -38,29 +50,61 @@ func main() {
 	flag.StringVar(&o.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&o.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
 	flag.BoolVar(&o.useDoH, "use-doh", false, "use DNS Over HTTPS method to lookup a domain.")
+	flag.StringVar(&o.action, "action", "", "do actions to the process [actions: quit]")
 	flag.Parse()
 
-	var listener net.Listener
-	var err error
+	daemon.AddCommand(daemon.StringFlag(&o.action, "quit"), syscall.SIGQUIT, termHandler)
 
+	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
+	os.MkdirAll(workDir, 0755)
+
+	cntxt := &daemon.Context{
+		PidFileName: filepath.Join(workDir, "sandwich.pid"),
+		PidFilePerm: 0644,
+		LogFileName: filepath.Join(workDir, "sandwich.log"),
+		LogFilePerm: 0640,
+		Umask:       027,
+		Args:        nil,
+	}
+
+	if len(daemon.ActiveFlags()) > 0 {
+		d, err := cntxt.Search()
+		if err != nil {
+			log.Fatalf("error: unable send signal to the daemon: %s", err.Error())
+		}
+		daemon.SendCommands(d)
+		return
+	}
+
+	d, err := cntxt.Reborn()
+	if err != nil {
+		log.Fatalf("error: %s", strings.ToLower(err.Error()))
+	}
+	if d != nil {
+		return
+	}
+	defer cntxt.Release()
+
+	var listener net.Listener
 	if listener, err = net.Listen("tcp", o.listenAddr); err != nil {
-		log.Panic(err)
+		log.Fatalf("error: %s", err.Error())
 	}
 
 	if o.remoteProxyMode {
-		err = startRemoteProxy(o, listener)
+		go startRemoteProxy(o, listener)
 	} else {
-		err = startLocalProxy(o, listener)
+		go startLocalProxy(o, listener)
 	}
-	if err != nil {
-		log.Panic(err)
+
+	if err = daemon.ServeSignals(); err != nil {
+		log.Fatalf("error: %s", strings.ToLower(err.Error()))
 	}
 }
 
-func startLocalProxy(o options, listener net.Listener) (err error) {
+func startLocalProxy(o options, listener net.Listener) {
 	u, err := url.Parse(o.remoteProxyAddr)
 	if err != nil {
-		return err
+		return
 	}
 
 	h := make(http.Header, 0)
@@ -99,14 +143,27 @@ func startLocalProxy(o options, listener net.Listener) (err error) {
 	go local.pullLatestIPRange(ctx)
 
 	gocron.Every(4).Hours().DoSafely(local.pullLatestIPRange, ctx)
-	gocron.Start()
+	gocron.Every(3).Seconds().DoSafely(sysProxy)
+	cronDone = gocron.Start()
 
 	defer cancel()
 
-	return http.Serve(listener, local)
+	if err := http.Serve(listener, local); err != nil {
+		log.Fatalf("error: %s", err.Error())
+	}
 }
 
-func startRemoteProxy(o options, listener net.Listener) error {
+func startRemoteProxy(o options, listener net.Listener) {
+	gocron.Every(1).Seconds().DoSafely(func() {
+		select {
+		case <-quit:
+			close(cronDone)
+			close(done)
+		default:
+		}
+	})
+	cronDone = gocron.Start()
+
 	var err error
 
 	r := &remoteProxy{
@@ -118,6 +175,35 @@ func startRemoteProxy(o options, listener net.Listener) error {
 	} else {
 		err = http.Serve(listener, r)
 	}
+	if err != nil {
+		log.Fatalf("error: %s", err.Error())
+	}
+}
 
+func termHandler(sig os.Signal) (err error) {
+	close(quit)
+	if sig == syscall.SIGQUIT {
+		<-done
+	}
+	return daemon.ErrStop
+}
+
+func sysProxy() (err error) {
+	select {
+	case <-quit:
+		close(cronDone)
+		err = unsetSysProxy()
+		close(done)
+	default:
+		err = setSysProxy()
+	}
 	return err
+}
+
+func setSysProxy() error {
+	return nil
+}
+
+func unsetSysProxy() error {
+	return nil
 }

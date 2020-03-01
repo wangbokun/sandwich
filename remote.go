@@ -48,7 +48,7 @@ func (s *remoteProxy) reverseProxy(rw http.ResponseWriter, req *http.Request) {
 	var u *url.URL
 	var err error
 	if u, err = url.Parse(s.reversedWebsite); err != nil {
-		log.Panic(err)
+		log.Fatalf("error: %s", err.Error())
 	}
 
 	req.URL.Host = u.Host

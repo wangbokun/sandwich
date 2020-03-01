@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/golang/groupcache/lru"
-
 	"github.com/stretchr/testify/require"
 )
 
