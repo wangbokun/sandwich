@@ -7,6 +7,13 @@ import (
 	"sync"
 )
 
+var privateIPRange = []*ipRange{
+	{value: "192.168.0.0/16"},
+	{value: "172.16.0.0/12"},
+	{value: "10.0.0.0/8"},
+	{value: "127.0.0.0/8"},
+}
+
 type ipRange struct {
 	value string
 	min   net.IP
@@ -84,6 +91,7 @@ func (db *chinaIPRangeDB) contains(target net.IP) bool {
 func newChinaIPRangeDB() *chinaIPRangeDB {
 	db.Lock()
 	defer db.Unlock()
+	db.db = append(db.db, privateIPRange...)
 	db.init()
 	sort.Sort(db)
 	return db

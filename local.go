@@ -204,6 +204,7 @@ func (l *localProxy) pullLatestIPRange(ctx context.Context) error {
 	l.chinaIP.Lock()
 	defer l.chinaIP.Unlock()
 	l.chinaIP.db = db
+	l.chinaIP.db = append(l.chinaIP.db, privateIPRange...)
 	l.chinaIP.init()
 	sort.Sort(l.chinaIP)
 	return nil
