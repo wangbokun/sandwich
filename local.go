@@ -58,10 +58,9 @@ type localProxy struct {
 }
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	req.Host = appendPort(req.Host)
-
+	targetAddr := appendPort(req.Host, req.URL.Scheme)
 	client, _, _ := rw.(http.Hijacker).Hijack()
-	host, _, _ := net.SplitHostPort(req.Host)
+	host, _, _ := net.SplitHostPort(targetAddr)
 
 	if !l.autoCrossFirewall {
 		l.remote(client, req)
@@ -71,20 +70,20 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	targetIP := net.ParseIP(host)
 
 	if targetIP != nil && l.chinaIP.contains(targetIP) {
-		l.direct(client, req)
+		l.direct(client, req, targetAddr)
 		return
 	}
 
 	if targetIP == nil && l.chinaIP.contains(l.lookup(host)) {
-		l.direct(client, req)
+		l.direct(client, req, targetAddr)
 		return
 	}
 
 	l.remote(client, req)
 }
 
-func (l *localProxy) direct(client net.Conn, req *http.Request) {
-	target, err := net.Dial("tcp", req.Host)
+func (l *localProxy) direct(client net.Conn, req *http.Request, targetAddr string) {
+	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		return
 	}
@@ -103,12 +102,12 @@ func (l *localProxy) remote(client net.Conn, req *http.Request) {
 	var remoteProxy net.Conn
 	var err error
 
-	l.remoteProxyAddr.Host = appendPort(l.remoteProxyAddr.Host)
+	remoteProxyAddr := appendPort(l.remoteProxyAddr.Host, l.remoteProxyAddr.Scheme)
 
 	if l.remoteProxyAddr.Scheme == "https" {
-		remoteProxy, err = tls.Dial("tcp", l.remoteProxyAddr.Host, nil)
+		remoteProxy, err = tls.Dial("tcp", remoteProxyAddr, nil)
 	} else {
-		remoteProxy, err = net.Dial("tcp", l.remoteProxyAddr.Host)
+		remoteProxy, err = net.Dial("tcp", remoteProxyAddr)
 	}
 	if err != nil {
 		return
@@ -210,9 +209,13 @@ func (l *localProxy) pullLatestIPRange(ctx context.Context) error {
 	return nil
 }
 
-func appendPort(host string) string {
+func appendPort(host string, schema string) string {
 	if strings.Index(host, ":") < 0 || strings.HasSuffix(host, "]") {
-		host += ":80"
+		if schema == "https" {
+			host += ":443"
+		} else {
+			host += ":80"
+		}
 	}
 	return host
 }

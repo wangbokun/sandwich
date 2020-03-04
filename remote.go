@@ -26,10 +26,10 @@ func (s *remoteProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func (s *remoteProxy) crossWall(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del(headerSecret)
-	req.Host = appendPort(req.Host)
+	targetAddr := appendPort(req.Host, req.URL.Scheme)
 
 	localProxy, _, _ := rw.(http.Hijacker).Hijack()
-	target, err := net.Dial("tcp", req.Host)
+	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		return
 	}
