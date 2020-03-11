@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"github.com/juju/ratelimit"
 )
 
 type remoteProxy struct {
@@ -54,7 +56,37 @@ func (s *remoteProxy) reverseProxy(rw http.ResponseWriter, req *http.Request) {
 	req.URL.Host = u.Host
 	req.URL.Scheme = u.Scheme
 	req.Host = ""
-	httputil.NewSingleHostReverseProxy(u).ServeHTTP(rw, req)
+	httputil.NewSingleHostReverseProxy(u).ServeHTTP(newRateLimitResponseWriter(rw), req)
+}
+
+const (
+	defaultRate = 20 * 1024 // 20 KB
+)
+
+type rateLimitResponseWriter struct {
+	rw      http.ResponseWriter
+	limiter io.Writer
+}
+
+func newRateLimitResponseWriter(rw http.ResponseWriter) *rateLimitResponseWriter {
+	bucket := ratelimit.NewBucketWithRate(defaultRate, defaultRate)
+	w := ratelimit.Writer(rw, bucket)
+	return &rateLimitResponseWriter{
+		rw:      rw,
+		limiter: w,
+	}
+}
+
+func (r *rateLimitResponseWriter) Header() http.Header {
+	return r.rw.Header()
+}
+
+func (r *rateLimitResponseWriter) Write(p []byte) (int, error) {
+	return r.limiter.Write(p)
+}
+
+func (r *rateLimitResponseWriter) WriteHeader(statusCode int) {
+	r.rw.WriteHeader(statusCode)
 }
 
 func transfer(dst io.WriteCloser, src io.ReadCloser) {

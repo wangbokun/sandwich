@@ -4,6 +4,8 @@ github.com/davecgh/go-spew/spew
 github.com/golang/groupcache/lru
 # github.com/jasonlvhit/gocron v0.0.0-20191228163020-98b59b546dee
 github.com/jasonlvhit/gocron
+# github.com/juju/ratelimit v1.0.1
+github.com/juju/ratelimit
 # github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 github.com/kardianos/osext
 # github.com/pmezard/go-difflib v1.0.0
