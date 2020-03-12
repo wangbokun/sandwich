@@ -2,14 +2,14 @@
 github.com/davecgh/go-spew/spew
 # github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 github.com/golang/groupcache/lru
-# github.com/jasonlvhit/gocron v0.0.0-20191228163020-98b59b546dee
-github.com/jasonlvhit/gocron
 # github.com/juju/ratelimit v1.0.1
 github.com/juju/ratelimit
 # github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 github.com/kardianos/osext
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
+# github.com/robfig/cron/v3 v3.0.0
+github.com/robfig/cron/v3
 # github.com/sevlyar/go-daemon v0.1.5
 github.com/sevlyar/go-daemon
 # github.com/stretchr/testify v1.5.1

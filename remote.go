@@ -30,6 +30,8 @@ func (s *remoteProxy) crossWall(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del(headerSecret)
 	targetAddr := appendPort(req.Host, req.URL.Scheme)
 
+	log.Println(req.URL.String())
+
 	localProxy, _, _ := rw.(http.Hijacker).Hijack()
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {

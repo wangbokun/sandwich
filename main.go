@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"github.com/golang/groupcache/lru"
-	"github.com/jasonlvhit/gocron"
+	cron "github.com/robfig/cron/v3"
 	"github.com/sevlyar/go-daemon"
 )
 
@@ -30,6 +30,7 @@ type options struct {
 	useDoH                   bool
 	action                   string
 	networkservice           string
+	log                      string
 }
 
 var (
@@ -39,19 +40,20 @@ var (
 )
 
 func main() {
-	log.SetFlags(0)
+	log.SetFlags(log.LstdFlags)
 
 	flag.BoolVar(&flags.remoteProxyMode, "remote-proxy-mode", false, "remote proxy mode")
 	flag.StringVar(&flags.remoteProxyAddr, "remote-proxy-addr", "https://yourdomain.com:443", "the remote proxy address to connect to")
 	flag.StringVar(&flags.listenAddr, "listen-addr", "127.0.0.1:2286", "listens on given address")
 	flag.StringVar(&flags.certFile, "cert-file", "", "cert file path")
 	flag.StringVar(&flags.privateKeyFile, "private-key-file", "", "private key file path")
-	flag.StringVar(&flags.secretKey, "secret-key", "daf07cfb73d0af0777e5", "secrect header key to cross firewall")
+	flag.StringVar(&flags.secretKey, "secret-key", "dbf07cfb73d0bf0777b5", "secrect header key to cross firewall")
 	flag.StringVar(&flags.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&flags.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
 	flag.BoolVar(&flags.useDoH, "use-doh", false, "use DNS Over HTTPS method to lookup a domain.")
 	flag.StringVar(&flags.action, "action", "", "do actions to the process [actions: quit]")
 	flag.StringVar(&flags.networkservice, "ns", "Wi-Fi", "the networkservice to auto set proxy")
+	flag.StringVar(&flags.log, "log", "/tmp/sandwich.log", "log file")
 	flag.Parse()
 
 	daemon.AddCommand(daemon.StringFlag(&flags.action, "quit"), syscall.SIGQUIT, termHandler)
@@ -154,9 +156,14 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 
 	setSysProxy(o.networkservice, o.listenAddr)
 
-	gocron.Every(4).Hours().DoSafely(local.pullLatestIPRange, ctx)
-	gocron.Every(3).Seconds().DoSafely(sysProxy, o.networkservice, o.listenAddr)
-	cronDone = gocron.Start()
+	s := cron.New()
+	s.AddFunc("@every 4h", func() {
+		local.pullLatestIPRange(ctx)
+	})
+	s.AddFunc("@every 3s", func() {
+		sysProxy(o.networkservice, o.listenAddr)
+	})
+	s.Start()
 
 	defer cancel()
 
@@ -164,6 +171,9 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 }
 
 func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
+	if f, err := os.OpenFile(o.log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755); err == nil {
+		log.SetOutput(f)
+	}
 	cronDone = make(chan bool)
 	var err error
 	r := &remoteProxy{
