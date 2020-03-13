@@ -34,9 +34,8 @@ type options struct {
 }
 
 var (
-	quit     = make(chan struct{})
-	cronDone chan bool
-	flags    options
+	quit  = make(chan struct{})
+	flags options
 )
 
 func main() {
@@ -174,7 +173,6 @@ func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
 	if f, err := os.OpenFile(o.log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755); err == nil {
 		log.SetOutput(f)
 	}
-	cronDone = make(chan bool)
 	var err error
 	r := &remoteProxy{
 		secretKey:       o.secretKey,
@@ -190,7 +188,6 @@ func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
 
 func termHandler(_ os.Signal) (err error) {
 	close(quit)
-	close(cronDone)
 	unsetSysProxy(flags.networkservice)
 	return daemon.ErrStop
 }
