@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -11,7 +14,7 @@ import (
 )
 
 const (
-	defaultTTL = 4 * time.Hour
+	defaultTTL = 24 * time.Hour
 )
 
 type dns interface {
@@ -75,4 +78,27 @@ func (d *dnsOverUDP) lookup(host string) (ip net.IP, expriedAt time.Time) {
 	}
 
 	return answers[0], time.Now().Add(defaultTTL)
+}
+
+type smartDNS struct {
+	dnsOverUDP   *dnsOverUDP
+	dnsOverHTTPS *dnsOverHTTPS
+}
+
+func (d *smartDNS) lookup(host string) (ip net.IP, expriedAt time.Time) {
+	if d.isBlockedByGFW(host) {
+		return d.dnsOverHTTPS.lookup(host)
+	}
+	return d.dnsOverUDP.lookup(host)
+}
+
+func (d *smartDNS) isBlockedByGFW(host string) bool {
+	id := make([]byte, 5)
+	_, err := io.ReadFull(rand.Reader, id)
+	if err != nil {
+		panic(err)
+	}
+	nonexistentDomain := hex.EncodeToString(id) + "." + host
+	ip, _ := d.dnsOverUDP.lookup(nonexistentDomain)
+	return ip != nil
 }

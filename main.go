@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"github.com/golang/groupcache/lru"
-	cron "github.com/robfig/cron/v3"
+	"github.com/robfig/cron/v3"
 	"github.com/sevlyar/go-daemon"
 )
 
@@ -27,7 +27,7 @@ type options struct {
 	secretKey                string
 	reversedWebsite          string
 	disableAutoCrossFirewall bool
-	useDoH                   bool
+	alwaysUseDoH             bool
 	action                   string
 	networkservice           string
 	log                      string
@@ -41,6 +41,9 @@ var (
 func main() {
 	log.SetFlags(log.LstdFlags)
 
+	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
+	logFile := filepath.Join(workDir, "sandwich.log")
+
 	flag.BoolVar(&flags.remoteProxyMode, "remote-proxy-mode", false, "remote proxy mode")
 	flag.StringVar(&flags.remoteProxyAddr, "remote-proxy-addr", "https://yourdomain.com:443", "the remote proxy address to connect to")
 	flag.StringVar(&flags.listenAddr, "listen-addr", "127.0.0.1:2286", "listens on given address")
@@ -49,22 +52,21 @@ func main() {
 	flag.StringVar(&flags.secretKey, "secret-key", "dbf07cfb73d0bf0777b5", "secrect header key to cross firewall")
 	flag.StringVar(&flags.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&flags.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
-	flag.BoolVar(&flags.useDoH, "use-doh", false, "use DNS Over HTTPS method to lookup a domain.")
+	flag.BoolVar(&flags.alwaysUseDoH, "always-use-doh", false, "always use DNS Over HTTPS method to lookup a domain")
 	flag.StringVar(&flags.action, "action", "", "do actions to the process [actions: quit]")
 	flag.StringVar(&flags.networkservice, "ns", "Wi-Fi", "the networkservice to auto set proxy")
-	flag.StringVar(&flags.log, "log", "/tmp/sandwich.log", "log file")
+	flag.StringVar(&flags.log, "log", logFile, "log file")
 	flag.Parse()
 
 	daemon.AddCommand(daemon.StringFlag(&flags.action, "quit"), syscall.SIGQUIT, termHandler)
 	daemon.SetSigHandler(termHandler, syscall.SIGQUIT, syscall.SIGTERM)
 
-	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
 	os.MkdirAll(workDir, 0755)
 
 	cntxt := &daemon.Context{
 		PidFileName: filepath.Join(workDir, "sandwich.pid"),
 		PidFilePerm: 0644,
-		LogFileName: filepath.Join(workDir, "sandwich.log"),
+		LogFileName: logFile,
 		LogFilePerm: 0640,
 		Umask:       027,
 		Args:        nil,
@@ -133,10 +135,13 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 	}
 
 	var dns dns
-	if o.useDoH {
+	if o.alwaysUseDoH {
 		dns = &dnsOverHTTPS{client: client}
 	} else {
-		dns = &dnsOverUDP{}
+		dns = &smartDNS{
+			dnsOverUDP:   &dnsOverUDP{},
+			dnsOverHTTPS: &dnsOverHTTPS{client: client},
+		}
 	}
 
 	local := &localProxy{
@@ -150,8 +155,6 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	go local.pullLatestIPRange(ctx)
 
 	setSysProxy(o.networkservice, o.listenAddr)
 
