@@ -53,25 +53,25 @@ func TestPullLatestIPRange(t *testing.T) {
 				Proxy: nil,
 			},
 		},
-		chinaIP: newChinaIPRangeDB(),
+		chinaIPRangeDB: newChinaIPRangeDB(),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	t.Log(local.chinaIP.Len())
+	t.Log(local.chinaIPRangeDB.Len())
 	err := local.pullLatestIPRange(ctx)
 	require.Nil(t, err)
-	require.NotZero(t, local.chinaIP.Len())
-	t.Log(local.chinaIP.Len())
+	require.NotZero(t, local.chinaIPRangeDB.Len())
+	t.Log(local.chinaIPRangeDB.Len())
 
 	cn := "2001:da8:1001:7::88"
-	require.True(t, local.chinaIP.contains(net.ParseIP(cn)))
+	require.True(t, local.chinaIPRangeDB.contains(net.ParseIP(cn)))
 
 	usa := "172.217.11.68"
-	require.False(t, local.chinaIP.contains(net.ParseIP(usa)))
+	require.False(t, local.chinaIPRangeDB.contains(net.ParseIP(usa)))
 
 	cn = "106.85.37.170"
-	require.True(t, local.chinaIP.contains(net.ParseIP(cn)))
+	require.True(t, local.chinaIPRangeDB.contains(net.ParseIP(cn)))
 }

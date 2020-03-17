@@ -30,13 +30,13 @@ func (s *remoteProxy) crossWall(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del(headerSecret)
 	targetAddr := appendPort(req.Host, req.URL.Scheme)
 
-	log.Println(req.URL.String())
-
-	localProxy, _, _ := rw.(http.Hijacker).Hijack()
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
+		http.Error(rw, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+
+	localProxy, _, _ := rw.(http.Hijacker).Hijack()
 
 	if req.Method == http.MethodConnect {
 		localProxy.Write([]byte(fmt.Sprintf("%s 200 OK\r\n\r\n", req.Proto)))

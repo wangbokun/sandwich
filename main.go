@@ -30,7 +30,6 @@ type options struct {
 	alwaysUseDoH             bool
 	action                   string
 	networkservice           string
-	log                      string
 }
 
 var (
@@ -40,6 +39,7 @@ var (
 
 func main() {
 	log.SetFlags(log.LstdFlags)
+	log.SetOutput(os.Stdout)
 
 	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
 	logFile := filepath.Join(workDir, "sandwich.log")
@@ -55,7 +55,6 @@ func main() {
 	flag.BoolVar(&flags.alwaysUseDoH, "always-use-doh", false, "always use DNS Over HTTPS method to lookup a domain")
 	flag.StringVar(&flags.action, "action", "", "do actions to the process [actions: quit]")
 	flag.StringVar(&flags.networkservice, "ns", "Wi-Fi", "the networkservice to auto set proxy")
-	flag.StringVar(&flags.log, "log", logFile, "log file")
 	flag.Parse()
 
 	daemon.AddCommand(daemon.StringFlag(&flags.action, "quit"), syscall.SIGQUIT, termHandler)
@@ -147,7 +146,7 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 	local := &localProxy{
 		remoteProxyAddr:   u,
 		secretKey:         o.secretKey,
-		chinaIP:           newChinaIPRangeDB(),
+		chinaIPRangeDB:    newChinaIPRangeDB(),
 		dnsCache:          lru.New(8192),
 		autoCrossFirewall: !o.disableAutoCrossFirewall,
 		client:            client,
@@ -173,9 +172,6 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 }
 
 func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
-	if f, err := os.OpenFile(o.log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755); err == nil {
-		log.SetOutput(f)
-	}
 	var err error
 	r := &remoteProxy{
 		secretKey:       o.secretKey,

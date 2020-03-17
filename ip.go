@@ -7,11 +7,18 @@ import (
 	"sync"
 )
 
-var privateIPRange = []*ipRange{
-	{value: "192.168.0.0/16"},
-	{value: "172.16.0.0/12"},
-	{value: "10.0.0.0/8"},
-	{value: "127.0.0.0/8"},
+var privateIPRange = &IPRangeDB{
+	db: []*ipRange{
+		{value: "192.168.0.0/16"},
+		{value: "172.16.0.0/12"},
+		{value: "10.0.0.0/8"},
+		{value: "127.0.0.0/8"},
+	},
+}
+
+func init() {
+	privateIPRange.init()
+	sort.Sort(privateIPRange)
 }
 
 type ipRange struct {
@@ -40,30 +47,30 @@ func (i *ipRange) init() {
 	i.max = max
 }
 
-type chinaIPRangeDB struct {
+type IPRangeDB struct {
 	sync.RWMutex
 	db []*ipRange
 }
 
-func (db *chinaIPRangeDB) init() {
+func (db *IPRangeDB) init() {
 	for i := range db.db {
 		db.db[i].init()
 	}
 }
 
-func (db *chinaIPRangeDB) Len() int {
+func (db *IPRangeDB) Len() int {
 	return len(db.db)
 }
 
-func (db *chinaIPRangeDB) Less(i, j int) bool {
+func (db *IPRangeDB) Less(i, j int) bool {
 	return bytes.Compare(db.db[i].max, db.db[j].min) == -1
 }
 
-func (db *chinaIPRangeDB) Swap(i, j int) {
+func (db *IPRangeDB) Swap(i, j int) {
 	db.db[i], db.db[j] = db.db[j], db.db[i]
 }
 
-func (db *chinaIPRangeDB) contains(target net.IP) bool {
+func (db *IPRangeDB) contains(target net.IP) bool {
 	db.RLock()
 	defer db.RUnlock()
 	if target == nil {
@@ -88,11 +95,10 @@ func (db *chinaIPRangeDB) contains(target net.IP) bool {
 	return bytes.Compare(target, db.db[i].min) >= 0 && bytes.Compare(target, db.db[i].max) <= 0
 }
 
-func newChinaIPRangeDB() *chinaIPRangeDB {
-	db.Lock()
-	defer db.Unlock()
-	db.db = append(db.db, privateIPRange...)
-	db.init()
-	sort.Sort(db)
-	return db
+func newChinaIPRangeDB() *IPRangeDB {
+	chinaIPRangeDB.Lock()
+	defer chinaIPRangeDB.Unlock()
+	chinaIPRangeDB.init()
+	sort.Sort(chinaIPRangeDB)
+	return chinaIPRangeDB
 }

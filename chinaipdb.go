@@ -1,6 +1,6 @@
 package main
 
-var db = &chinaIPRangeDB{
+var chinaIPRangeDB = &IPRangeDB{
 	db: []*ipRange{
 		{value: "1.0.1.0/24"},
 		{value: "1.0.2.0/23"},

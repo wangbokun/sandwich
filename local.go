@@ -50,7 +50,7 @@ type localProxy struct {
 	sync.RWMutex
 	remoteProxyAddr   *url.URL
 	secretKey         string
-	chinaIP           *chinaIPRangeDB
+	chinaIPRangeDB    *IPRangeDB
 	dnsCache          *lru.Cache
 	autoCrossFirewall bool
 	client            *http.Client
@@ -69,12 +69,22 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	targetIP := net.ParseIP(host)
 
-	if targetIP != nil && l.chinaIP.contains(targetIP) {
+	if targetIP != nil && l.chinaIPRangeDB.contains(targetIP) {
 		l.direct(client, req, targetAddr)
 		return
 	}
 
-	if targetIP == nil && l.chinaIP.contains(l.lookup(host)) {
+	if targetIP == nil && l.chinaIPRangeDB.contains(l.lookup(host)) {
+		l.direct(client, req, targetAddr)
+		return
+	}
+
+	if targetIP != nil && privateIPRange.contains(targetIP) && isUnPollutedPrivateDNSAnswer(targetAddr) {
+		l.direct(client, req, targetAddr)
+		return
+	}
+
+	if targetIP == nil && privateIPRange.contains(l.lookup(host)) && isUnPollutedPrivateDNSAnswer(targetAddr) {
 		l.direct(client, req, targetAddr)
 		return
 	}
@@ -200,12 +210,11 @@ func (l *localProxy) pullLatestIPRange(ctx context.Context) error {
 		return errors.New("empty ip range db")
 	}
 
-	l.chinaIP.Lock()
-	defer l.chinaIP.Unlock()
-	l.chinaIP.db = db
-	l.chinaIP.db = append(l.chinaIP.db, privateIPRange...)
-	l.chinaIP.init()
-	sort.Sort(l.chinaIP)
+	l.chinaIPRangeDB.Lock()
+	defer l.chinaIPRangeDB.Unlock()
+	l.chinaIPRangeDB.db = db
+	l.chinaIPRangeDB.init()
+	sort.Sort(l.chinaIPRangeDB)
 	return nil
 }
 
@@ -218,4 +227,14 @@ func appendPort(host string, schema string) string {
 		}
 	}
 	return host
+}
+
+func isUnPollutedPrivateDNSAnswer(address string) bool {
+	c, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+
+	c.Close()
+	return true
 }
