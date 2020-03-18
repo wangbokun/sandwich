@@ -59,42 +59,43 @@ type localProxy struct {
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	targetAddr := appendPort(req.Host, req.URL.Scheme)
-	client, _, _ := rw.(http.Hijacker).Hijack()
 	host, _, _ := net.SplitHostPort(targetAddr)
 
 	if !l.autoCrossFirewall {
-		l.remote(client, req)
+		l.remote(rw, req)
 		return
 	}
 
 	targetIP := net.ParseIP(host)
 
 	if targetIP != nil && l.chinaIPRangeDB.contains(targetIP) {
-		l.direct(client, req, targetAddr)
+		l.direct(rw, req, targetAddr)
 		return
 	}
 
 	if targetIP == nil && l.chinaIPRangeDB.contains(l.lookup(host)) {
-		l.direct(client, req, targetAddr)
+		l.direct(rw, req, targetAddr)
 		return
 	}
 
 	if targetIP != nil && privateIPRange.contains(targetIP) && isUnPollutedPrivateDNSAnswer(targetAddr) {
-		l.direct(client, req, targetAddr)
+		l.direct(rw, req, targetAddr)
 		return
 	}
 
 	if targetIP == nil && privateIPRange.contains(l.lookup(host)) && isUnPollutedPrivateDNSAnswer(targetAddr) {
-		l.direct(client, req, targetAddr)
+		l.direct(rw, req, targetAddr)
 		return
 	}
 
-	l.remote(client, req)
+	l.remote(rw, req)
 }
 
-func (l *localProxy) direct(client net.Conn, req *http.Request, targetAddr string) {
+func (l *localProxy) direct(rw http.ResponseWriter, req *http.Request, targetAddr string) {
+	client, _, _ := rw.(http.Hijacker).Hijack()
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
+		http.Error(rw, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -108,7 +109,8 @@ func (l *localProxy) direct(client net.Conn, req *http.Request, targetAddr strin
 	transfer(target, client)
 }
 
-func (l *localProxy) remote(client net.Conn, req *http.Request) {
+func (l *localProxy) remote(rw http.ResponseWriter, req *http.Request) {
+	client, _, _ := rw.(http.Hijacker).Hijack()
 	var remoteProxy net.Conn
 	var err error
 
