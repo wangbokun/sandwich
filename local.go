@@ -102,6 +102,10 @@ func (l *localProxy) direct(rw http.ResponseWriter, req *http.Request, targetAdd
 	if req.Method == http.MethodConnect {
 		client.Write([]byte(fmt.Sprintf("%s 200 OK\r\n\r\n", req.Proto)))
 	} else {
+		if v := req.Header.Get("Proxy-Connection"); v != "" {
+			req.Header.Del("Proxy-Connection")
+			req.Header.Set("Connection", v)
+		}
 		req.Write(target)
 	}
 

@@ -38,7 +38,7 @@ var (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags)
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	log.SetOutput(os.Stdout)
 
 	workDir := filepath.Join(os.Getenv("HOME"), ".sandwich")
