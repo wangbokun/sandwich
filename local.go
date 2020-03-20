@@ -67,12 +67,6 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	targetIP := net.ParseIP(host)
-
-	if l.chinaIPRangeDB.contains(targetIP) || privateIPRange.contains(targetIP) {
-		l.direct(rw, req, targetAddr)
-		return
-	}
-
 	if targetIP == nil {
 		targetIP = l.lookup(targetAddr)
 	}
