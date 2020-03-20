@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"testing"
 
@@ -31,7 +32,8 @@ func TestSmartDNS_Lookup(t *testing.T) {
 		dnsOverUDP:   &dnsOverUDP{},
 		dnsOverHTTPS: &dnsOverHTTPS{client: client},
 	}
-	ip, _ := s.lookup("youtube.com")
+	ip, _ := s.lookup("youtube.com", "443")
+	log.Println(ip.String())
 	require.NotNil(t, ip)
 	china := newChinaIPRangeDB()
 	require.False(t, china.contains(ip))

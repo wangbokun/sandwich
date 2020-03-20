@@ -18,14 +18,14 @@ const (
 )
 
 type dns interface {
-	lookup(host string) (ip net.IP, expriedAt time.Time)
+	lookup(host string, port string) (ip net.IP, expriedAt time.Time)
 }
 
 type dnsOverHTTPS struct {
 	client *http.Client
 }
 
-func (d *dnsOverHTTPS) lookup(host string) (ip net.IP, expriedAt time.Time) {
+func (d *dnsOverHTTPS) lookup(host string, port string) (ip net.IP, expriedAt time.Time) {
 	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
 	req.Header.Set("Accept", "application/dns-json")
@@ -71,7 +71,7 @@ func (d *dnsOverHTTPS) lookup(host string) (ip net.IP, expriedAt time.Time) {
 type dnsOverUDP struct {
 }
 
-func (d *dnsOverUDP) lookup(host string) (ip net.IP, expriedAt time.Time) {
+func (d *dnsOverUDP) lookup(host string, port string) (ip net.IP, expriedAt time.Time) {
 	answers, err := net.LookupIP(host)
 	if err != nil {
 		return nil, time.Now()
@@ -85,20 +85,42 @@ type smartDNS struct {
 	dnsOverHTTPS *dnsOverHTTPS
 }
 
-func (d *smartDNS) lookup(host string) (ip net.IP, expriedAt time.Time) {
-	if d.isBlockedByGFW(host) {
-		return d.dnsOverHTTPS.lookup(host)
+func (d *smartDNS) lookup(host string, port string) (ip net.IP, expriedAt time.Time) {
+	ip, t := d.dnsOverUDP.lookup(host, port)
+
+	addr := host + ":" + port
+
+	if privateIPRange.contains(ip) {
+		if isUnPollutedPrivateDNSAnswer(addr) {
+			return ip, t
+		}
+		return d.dnsOverHTTPS.lookup(host, "")
 	}
-	return d.dnsOverUDP.lookup(host)
+
+	if d.isBlockedByGFW(host) {
+		return d.dnsOverHTTPS.lookup(host, "")
+	}
+
+	return ip, t
 }
 
-func (d *smartDNS) isBlockedByGFW(host string) bool {
+func (d *smartDNS) isBlockedByGFW(domain string) bool {
 	id := make([]byte, 5)
 	_, err := io.ReadFull(rand.Reader, id)
 	if err != nil {
 		panic(err)
 	}
-	nonexistentDomain := hex.EncodeToString(id) + "." + host
-	ip, _ := d.dnsOverUDP.lookup(nonexistentDomain)
+	nonexistentDomain := hex.EncodeToString(id) + "." + domain
+	ip, _ := d.dnsOverUDP.lookup(nonexistentDomain, "")
 	return ip != nil
+}
+
+func isUnPollutedPrivateDNSAnswer(address string) bool {
+	c, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+
+	c.Close()
+	return true
 }

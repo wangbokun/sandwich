@@ -68,22 +68,16 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	targetIP := net.ParseIP(host)
 
-	if targetIP != nil && l.chinaIPRangeDB.contains(targetIP) {
+	if l.chinaIPRangeDB.contains(targetIP) || privateIPRange.contains(targetIP) {
 		l.direct(rw, req, targetAddr)
 		return
 	}
 
-	if targetIP == nil && l.chinaIPRangeDB.contains(l.lookup(host)) {
-		l.direct(rw, req, targetAddr)
-		return
+	if targetIP == nil {
+		targetIP = l.lookup(targetAddr)
 	}
 
-	if targetIP != nil && privateIPRange.contains(targetIP) && isUnPollutedPrivateDNSAnswer(targetAddr) {
-		l.direct(rw, req, targetAddr)
-		return
-	}
-
-	if targetIP == nil && privateIPRange.contains(l.lookup(host)) && isUnPollutedPrivateDNSAnswer(targetAddr) {
+	if l.chinaIPRangeDB.contains(targetIP) || privateIPRange.contains(targetIP) {
 		l.direct(rw, req, targetAddr)
 		return
 	}
@@ -136,7 +130,9 @@ func (l *localProxy) remote(rw http.ResponseWriter, req *http.Request) {
 	transfer(client, remoteProxy)
 }
 
-func (l *localProxy) lookup(host string) net.IP {
+func (l *localProxy) lookup(addr string) net.IP {
+	host, port, _ := net.SplitHostPort(addr)
+
 	l.Lock()
 	if v, ok := l.dnsCache.Get(host); ok {
 		r := v.(*answerCache)
@@ -148,7 +144,7 @@ func (l *localProxy) lookup(host string) net.IP {
 	}
 	l.Unlock()
 
-	ip, expiredAt := l.dns.lookup(host)
+	ip, expiredAt := l.dns.lookup(host, port)
 	if ip != nil {
 		l.Lock()
 		l.dnsCache.Add(host, &answerCache{
@@ -233,14 +229,4 @@ func appendPort(host string, schema string) string {
 		}
 	}
 	return host
-}
-
-func isUnPollutedPrivateDNSAnswer(address string) bool {
-	c, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
-	if err != nil {
-		return false
-	}
-
-	c.Close()
-	return true
 }

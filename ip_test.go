@@ -22,10 +22,10 @@ func TestChinaIPRangeContains(t *testing.T) {
 	require.False(t, china.contains(net.ParseIP(usa)))
 
 	local := "127.0.0.1"
-	require.True(t, china.contains(net.ParseIP(local)))
+	require.False(t, china.contains(net.ParseIP(local)))
 
 	local = "192.168.1.1"
-	require.True(t, china.contains(net.ParseIP(local)))
+	require.False(t, china.contains(net.ParseIP(local)))
 }
 
 func BenchmarkIsChinaIP(b *testing.B) {
