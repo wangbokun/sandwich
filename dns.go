@@ -25,7 +25,7 @@ type dnsOverHTTPS struct {
 	client *http.Client
 }
 
-func (d *dnsOverHTTPS) lookup(host string, port string) (ip net.IP, expriedAt time.Time) {
+func (d *dnsOverHTTPS) lookup(host string, _ string) (ip net.IP, expriedAt time.Time) {
 	provider := fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s", host)
 	req, _ := http.NewRequest(http.MethodGet, provider, nil)
 	req.Header.Set("Accept", "application/dns-json")
@@ -71,7 +71,7 @@ func (d *dnsOverHTTPS) lookup(host string, port string) (ip net.IP, expriedAt ti
 type dnsOverUDP struct {
 }
 
-func (d *dnsOverUDP) lookup(host string, port string) (ip net.IP, expriedAt time.Time) {
+func (d *dnsOverUDP) lookup(host string, _ string) (ip net.IP, expriedAt time.Time) {
 	answers, err := net.LookupIP(host)
 	if err != nil {
 		return nil, time.Now()

@@ -28,12 +28,9 @@ type options struct {
 	reversedWebsite          string
 	disableAutoCrossFirewall bool
 	alwaysUseDoH             bool
-	action                   string
-	networkservice           string
 }
 
 var (
-	quit  = make(chan struct{})
 	flags options
 )
 
@@ -53,11 +50,8 @@ func main() {
 	flag.StringVar(&flags.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&flags.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
 	flag.BoolVar(&flags.alwaysUseDoH, "always-use-doh", false, "always use DNS Over HTTPS method to lookup a domain")
-	flag.StringVar(&flags.action, "action", "", "do actions to the process [actions: quit]")
-	flag.StringVar(&flags.networkservice, "ns", "Wi-Fi", "the networkservice to auto set proxy")
 	flag.Parse()
 
-	daemon.AddCommand(daemon.StringFlag(&flags.action, "quit"), syscall.SIGQUIT, termHandler)
 	daemon.SetSigHandler(termHandler, syscall.SIGQUIT, syscall.SIGTERM)
 
 	os.MkdirAll(workDir, 0755)
@@ -155,14 +149,11 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	setSysProxy(o.networkservice, o.listenAddr)
+	setSysProxy(o.listenAddr)
 
 	s := cron.New()
 	s.AddFunc("@every 4h", func() {
 		local.pullLatestIPRange(ctx)
-	})
-	s.AddFunc("@every 3s", func() {
-		sysProxy(o.networkservice, o.listenAddr)
 	})
 	s.Start()
 
@@ -186,16 +177,6 @@ func startRemoteProxy(o options, listener net.Listener, errChan chan<- error) {
 }
 
 func termHandler(_ os.Signal) (err error) {
-	close(quit)
-	unsetSysProxy(flags.networkservice)
+	unsetSysProxy()
 	return daemon.ErrStop
-}
-
-func sysProxy(networkservice string, listenAddr string) (err error) {
-	select {
-	case <-quit:
-	default:
-		err = setSysProxy(networkservice, listenAddr)
-	}
-	return err
 }

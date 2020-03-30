@@ -3,15 +3,15 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
+	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os/exec"
 	"strings"
 )
 
-func setSysProxy(networkservice string, listenAddr string) error {
+func setSysProxy(listenAddr string) error {
 	host, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		return err
@@ -20,55 +20,46 @@ func setSysProxy(networkservice string, listenAddr string) error {
 		host = "127.0.0.1"
 	}
 
-	if !isSecureWebProxyON(networkservice, host, port) {
-		cmd := exec.Command("networksetup", "-setsecurewebproxy", networkservice, host, port)
-		if err := cmd.Run(); err != nil {
-			return err
-		}
+	networkservice := getNetworkInterface()
+
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("networksetup -setsecurewebproxy %s %s %s", networkservice, host, port))
+	log.Println(cmd.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out) + err.Error())
 	}
 
-	if !isWebProxyON(networkservice, host, port) {
-		cmd := exec.Command("networksetup", "-setwebproxy", networkservice, host, port)
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func unsetSysProxy(networkservice string) error {
-	cmd := exec.Command("networksetup", "-setsecurewebproxystate", networkservice, "off")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	cmd = exec.Command("networksetup", "-setwebproxystate", networkservice, "off")
-	if err := cmd.Run(); err != nil {
-		return err
+	cmd = exec.Command("sh", "-c", fmt.Sprintf("networksetup -setwebproxy %s %s %s", networkservice, host, port))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out) + err.Error())
 	}
 
 	return nil
 }
 
-func isWebProxyON(networkservice string, host, port string) bool {
-	return isProxyON(networkservice, "-getwebproxy", host, port)
-}
-
-func isSecureWebProxyON(networkservice string, host, port string) bool {
-	return isProxyON(networkservice, "-getsecurewebproxy", host, port)
-}
-
-func isProxyON(networkservice string, flag string, host string, port string) bool {
-	cmd := exec.Command("networksetup", flag, networkservice)
-	buf := bytes.NewBuffer(nil)
-	cmd.Stdout = bufio.NewWriter(buf)
-	if err := cmd.Run(); err != nil {
-		return false
+func unsetSysProxy() error {
+	networkservice := getNetworkInterface()
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("networksetup -setsecurewebproxystate %s %s", networkservice, "off"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out) + err.Error())
 	}
 
-	output := buf.String()
-	return strings.Contains(output, "Enabled: Yes") &&
-		strings.Contains(output, fmt.Sprintf("Server: %s", host)) &&
-		strings.Contains(output, fmt.Sprintf("Port: %s", port))
+	cmd = exec.Command("sh", "-c", fmt.Sprintf("networksetup -setwebproxystate %s %s", networkservice, "off"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.New(string(out) + err.Error())
+	}
+
+	return nil
+}
+
+func getNetworkInterface() string {
+	c := exec.Command("sh", "-c", "networksetup -listnetworkserviceorder | grep -B 1 $(route -n get default | grep interface | awk '{print $2}') | head -n 1 | sed 's/.*) //'")
+	out, err := c.CombinedOutput()
+	if err != nil {
+		return string(out)
+	}
+	output := strings.TrimSpace(string(out))
+	if strings.Contains(output, "usage") {
+		return "Wi-Fi"
+	}
+	return output
 }
