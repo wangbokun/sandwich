@@ -11,6 +11,7 @@ import (
 )
 
 func TestDNSOverHTTPS(t *testing.T) {
+	chinaIPDB := newChinaIPRangeDB()
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: nil,
@@ -21,25 +22,10 @@ func TestDNSOverHTTPS(t *testing.T) {
 		dnsCache: lru.New(10),
 		dns:      &dnsOverHTTPS{client: client},
 	}
-	host := "www.baidu.com:443"
+	host := "www.baidu.com"
 	answer := local.lookup(host)
 	require.NotNil(t, answer)
-	t.Log(answer.String())
-
-	cache, ok := local.dnsCache.Get("www.baidu.com")
-	require.True(t, ok)
-	require.EqualValues(t, answer, cache.(*answerCache).ip)
-}
-
-func TestDNSOverUDP(t *testing.T) {
-	local := &localProxy{
-		dnsCache: lru.New(10),
-		dns:      &dnsOverUDP{},
-	}
-	host := "www.baidu.com:443"
-	answer := local.lookup(host)
-	require.NotNil(t, answer)
-	t.Log(answer.String())
+	require.True(t, chinaIPDB.contains(answer))
 
 	cache, ok := local.dnsCache.Get("www.baidu.com")
 	require.True(t, ok)

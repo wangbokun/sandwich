@@ -68,7 +68,7 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	targetIP := net.ParseIP(host)
 	if targetIP == nil {
-		targetIP = l.lookup(targetAddr)
+		targetIP = l.lookup(host)
 	}
 
 	if l.chinaIPRangeDB.contains(targetIP) || privateIPRange.contains(targetIP) {
@@ -124,9 +124,7 @@ func (l *localProxy) remote(rw http.ResponseWriter, req *http.Request) {
 	transfer(client, remoteProxy)
 }
 
-func (l *localProxy) lookup(addr string) net.IP {
-	host, port, _ := net.SplitHostPort(addr)
-
+func (l *localProxy) lookup(host string) net.IP {
 	l.Lock()
 	if v, ok := l.dnsCache.Get(host); ok {
 		r := v.(*answerCache)
@@ -138,7 +136,7 @@ func (l *localProxy) lookup(addr string) net.IP {
 	}
 	l.Unlock()
 
-	ip, expiredAt := l.dns.lookup(host, port)
+	ip, expiredAt := l.dns.lookup(host)
 	if ip != nil {
 		l.Lock()
 		l.dnsCache.Add(host, &answerCache{

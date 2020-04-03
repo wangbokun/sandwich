@@ -27,7 +27,6 @@ type options struct {
 	secretKey                string
 	reversedWebsite          string
 	disableAutoCrossFirewall bool
-	alwaysUseDoH             bool
 }
 
 var (
@@ -49,7 +48,6 @@ func main() {
 	flag.StringVar(&flags.secretKey, "secret-key", "dbf07cfb73d0bf0777b5", "secrect header key to cross firewall")
 	flag.StringVar(&flags.reversedWebsite, "reversed-website", "http://mirrors.codec-cluster.org/", "reversed website to fool firewall")
 	flag.BoolVar(&flags.disableAutoCrossFirewall, "disable-auto-cross-firewall", false, "disable auto cross firewall")
-	flag.BoolVar(&flags.alwaysUseDoH, "always-use-doh", false, "always use DNS Over HTTPS method to lookup a domain")
 	flag.Parse()
 
 	daemon.SetSigHandler(termHandler, syscall.SIGQUIT, syscall.SIGTERM)
@@ -127,15 +125,7 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 		},
 	}
 
-	var dns dns
-	if o.alwaysUseDoH {
-		dns = &dnsOverHTTPS{client: client}
-	} else {
-		dns = &smartDNS{
-			dnsOverUDP:   &dnsOverUDP{},
-			dnsOverHTTPS: &dnsOverHTTPS{client: client},
-		}
-	}
+	var dns = &dnsOverHTTPS{client: client}
 
 	local := &localProxy{
 		remoteProxyAddr:   u,
