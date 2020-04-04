@@ -5,7 +5,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os/exec"
 	"strings"
@@ -23,7 +22,6 @@ func setSysProxy(listenAddr string) error {
 	networkservice := getNetworkInterface()
 
 	cmd := exec.Command("sh", "-c", fmt.Sprintf("networksetup -setsecurewebproxy %s %s %s", networkservice, host, port))
-	log.Println(cmd.String())
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.New(string(out) + err.Error())
 	}

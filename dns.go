@@ -10,8 +10,37 @@ import (
 	"time"
 )
 
+const (
+	defaultTTL = 24 * time.Hour
+)
+
 type dns interface {
 	lookup(host string) (ip net.IP, expriedAt time.Time)
+}
+
+type dnsOverUDP struct {
+}
+
+func (d *dnsOverUDP) lookup(host string) (ip net.IP, expriedAt time.Time) {
+	answers, err := net.LookupIP(host)
+	if err != nil {
+		return nil, time.Now()
+	}
+
+	return answers[0], time.Now().Add(defaultTTL)
+}
+
+type smartDNS struct {
+	dnsOverUDP   *dnsOverUDP
+	dnsOverHTTPS *dnsOverHTTPS
+}
+
+func (d *smartDNS) lookup(host string) (ip net.IP, expriedAt time.Time) {
+	ip, expriedAt = d.dnsOverHTTPS.lookup(host)
+	if ip == nil {
+		ip, expriedAt = d.dnsOverUDP.lookup(host)
+	}
+	return
 }
 
 type dnsOverHTTPS struct {

@@ -125,7 +125,10 @@ func startLocalProxy(o options, listener net.Listener, errChan chan<- error) {
 		},
 	}
 
-	var dns = &dnsOverHTTPS{client: client}
+	var dns = &smartDNS{
+		dnsOverHTTPS: &dnsOverHTTPS{client: client},
+		dnsOverUDP:   &dnsOverUDP{},
+	}
 
 	local := &localProxy{
 		remoteProxyAddr:   u,
