@@ -59,7 +59,7 @@ type localProxy struct {
 
 func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	targetAddr := appendPort(req.Host, req.URL.Scheme)
-	host, port, _ := net.SplitHostPort(targetAddr)
+	host, _, _ := net.SplitHostPort(targetAddr)
 
 	if !l.autoCrossFirewall {
 		l.remote(rw, req)
@@ -70,9 +70,6 @@ func (l *localProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if targetIP == nil {
 		targetIP = l.lookup(host)
 	}
-
-	req.Host = targetIP.String() + ":" + port
-	req.URL.Host = req.Host
 
 	if l.chinaIPRangeDB.contains(targetIP) || privateIPRange.contains(targetIP) {
 		l.direct(rw, req, targetAddr)
