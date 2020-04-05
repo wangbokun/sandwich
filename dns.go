@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	_ "unsafe"
 )
 
 const (
@@ -16,6 +18,17 @@ const (
 
 type dns interface {
 	lookup(host string) (ip net.IP, expriedAt time.Time)
+}
+
+type dnsOverHostsFile struct {
+}
+
+func (d *dnsOverHostsFile) lookup(host string) (ip net.IP, expriedAt time.Time) {
+	res := goLookupIPFiles(host)
+	if len(res) == 0 {
+		return nil, time.Now()
+	}
+	return res[0].IP, time.Now()
 }
 
 type dnsOverUDP struct {
@@ -31,14 +44,21 @@ func (d *dnsOverUDP) lookup(host string) (ip net.IP, expriedAt time.Time) {
 }
 
 type smartDNS struct {
-	dnsOverUDP   *dnsOverUDP
-	dnsOverHTTPS *dnsOverHTTPS
+	lookups []func(host string) (net.IP, time.Time)
+}
+
+func newSmartDNS(lookups ...func(host string) (net.IP, time.Time)) *smartDNS {
+	d := &smartDNS{}
+	d.lookups = append(d.lookups, lookups...)
+	return d
 }
 
 func (d *smartDNS) lookup(host string) (ip net.IP, expriedAt time.Time) {
-	ip, expriedAt = d.dnsOverHTTPS.lookup(host)
-	if ip == nil {
-		ip, expriedAt = d.dnsOverUDP.lookup(host)
+	for _, lookup := range d.lookups {
+		ip, expriedAt = lookup(host)
+		if ip != nil {
+			break
+		}
 	}
 	return
 }
@@ -89,3 +109,6 @@ func (d *dnsOverHTTPS) lookup(host string) (ip net.IP, expriedAt time.Time) {
 
 	return ip, expriedAt
 }
+
+//go:linkname goLookupIPFiles net.goLookupIPFiles
+func goLookupIPFiles(name string) (addrs []net.IPAddr)
