@@ -26,7 +26,13 @@ sandwich 是一个傻瓜化、实现简单、伪装强、安全的梯子。使�
 
 仅需两步，什么也不做，什么也不要，就这么简单！
 
-如果用浏览器访问 https://<youdomain.com>，出现的就是一个正常普通的反向代理网站，这就是伪装强的原因。反向代理的网站默认为 [http//mirrors.codec-cluster.org/](http//mirrors.codec-cluster.org/) ，可用 `-reversed-website` 参数指定。
+# 简单说明
+
+如果用浏览器访问 https://<youdomain.com>，出现的就是一个正常普通的反向代理网站，这就是伪装强的原因。反向代理的网站默认为 [http//mirrors.codec-cluster.org/](http//mirrors.codec-cluster.org/) ，可在海外的 sandwich 上用 `-reversed-website` 参数指定。
+
+所有支持系统代理的应用程序，比如 Slack，Chrome，Safari 之类的 HTTP/HTTPS 请求，都会发到 sandwich local proxy 来决定是否需要海外的 sandwich 代理。
+
+如果你用的程序不支持系统代理，但支持手动设置，那就手动设置 HTTP/HTTPS 代理。对于两者都不支持的应用程序，比如  ssh 命令行程序，可使用 Proxifier 来强制它走代理。
 
 # 懒，自行编译
 
