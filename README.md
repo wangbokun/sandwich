@@ -26,6 +26,10 @@ sandwich 是一个傻瓜化、实现简单、伪装强、安全的梯子。使�
 
 仅需两步，什么也不做，什么也不要，就这么简单！
 
+# 工作原理
+
+![sandwich-flow](./sandwich-flow.png)
+
 # 简单说明
 
 如果用浏览器访问 https://<youdomain.com>，出现的就是一个正常普通的反向代理网站，这就是伪装强的原因。反向代理的网站默认为 [http//mirrors.codec-cluster.org/](http//mirrors.codec-cluster.org/) ，可在海外的 sandwich 上用 `-reversed-website` 参数指定。
