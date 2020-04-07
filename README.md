@@ -1,6 +1,6 @@
 # sandwich
 
-sandwich 是一个傻瓜化、实现简单、伪装强、安全的梯子。使用 HTTPS 进行通信，伪装为普通网站请求。使用 IP 段、而不是规则表进行智能代理。
+sandwich 是一个傻瓜化、实现简单、伪装强、安全、基于 HTTPS 协议的梯子。使用 IP 段、而不是规则表进行智能代理。
 
 # 本地代理
 
@@ -24,7 +24,7 @@ sandwich 是一个傻瓜化、实现简单、伪装强、安全的梯子。使�
  -secret-key=dcf10cfe73d1bf97f7b3
 ```
 
-仅需两步，什么也不做，什么也不要，就这么简单！
+仅需这两步，什么也不做，什么也不要。
 
 # 工作原理
 
@@ -38,13 +38,8 @@ sandwich 是一个傻瓜化、实现简单、伪装强、安全的梯子。使�
 
 如果你用的程序不支持系统代理，但支持手动设置，那就手动设置 HTTP/HTTPS 代理。对于两者都不支持的应用程序，比如  ssh 命令行程序，可使用 Proxifier 来强制它走代理。
 
-# 懒，自行编译
-
-已编译好的二进制文件？我懒，自行编译吧。:)
 
 # 相关博客
-
-* [仅需 120 行 Go 代码实现双重 HTTP(S) 代理做梯子](https://fanpei91.com/posts/implement-double-proxies-to-cross-firewall-by-using-https/)
-
 * [sandwich: 如何更快、更智能、更傻瓜地看更大的世界？](http://fanpei91.com/posts/smart-proxy-without-rules/)
 
+* [仅需 120 行 Go 代码实现双重 HTTP(S) 代理做梯子](https://fanpei91.com/posts/implement-double-proxies-to-cross-firewall-by-using-https/)
